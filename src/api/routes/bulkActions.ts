@@ -16,19 +16,13 @@ import {
 
 const router = Router();
 
-// Required CSV headers for different entity types
-const CONTACT_REQUIRED_HEADERS = ['email'];
-
 /**
  * POST /bulk-actions
  * Create a new bulk action with CSV file upload
  *
  * Middleware chain:
  * 1. Authentication - Validate account ID
- * 2. Rate limiting - 10k rows/minute limit (only for POST)
  * 3. File upload - Secure file handling with Multer
- * 4. CSV security validation - Check for malicious content
- * 5. CSV validation - Validate headers and format
  * 6. Request validation - Validate JSON body
  * 7. Controller - Handle business logic
  */

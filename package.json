@@ -26,10 +26,12 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "@types/minio": "^7.1.0",
     "compression": "^1.8.0",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
+    "minio": "^8.0.5",
     "multer": "^2.0.0",
     "pg": "^8.16.0",
     "redis": "^5.1.0",

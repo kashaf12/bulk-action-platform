@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # Node.js API Instances (Scalable)
+  # Node.js API
   api:
     build:
       context: .
@@ -18,6 +18,11 @@ services:
       - MAX_FILE_SIZE_MB=10
       - MAX_CSV_ROWS=100000
       - BULK_ACTION_RATE_LIMIT=1000
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME:-storage}
     ports:
       - "3000:3000"
     volumes:
@@ -26,6 +31,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
@@ -40,7 +49,6 @@ services:
         max-file: "3"
         labels: "service=api"
 
-  # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     container_name: bulk-action-postgres
@@ -78,9 +86,8 @@ services:
       -c maintenance_work_mem=64MB
       -c checkpoint_completion_target=0.9
       -c wal_buffers=16MB
-      -c default_statistics_target=100
+      -c default_statistics_target=100  
 
-  # Database Seed Service (runs once)
   db-seed:
     build:
       context: .
@@ -104,7 +111,6 @@ services:
         max-file: "3"
         labels: "service=db-seed"
 
-  # pgAdmin for visual DB access
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: pgadmin
@@ -131,9 +137,55 @@ services:
         max-file: "3"
         labels: "service=pgadmin"
 
-# Volumes
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=minio"  
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        sleep 5;
+        mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin};
+        mc mb -p local/${MINIO_BUCKET_NAME:-storage} || true;
+        mc anonymous set download local/${MINIO_BUCKET_NAME:-storage};
+      "
+    restart: "no"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=minio-init" 
+
 volumes:
   postgres_data:
     driver: local
   pgadmin_data:
+    driver: local
+  minio_data:
     driver: local
