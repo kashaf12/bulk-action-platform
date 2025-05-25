@@ -1,0 +1,6 @@
+repopack-output.txt
+dist
+logs
+uploads
+node_modules
+.env
