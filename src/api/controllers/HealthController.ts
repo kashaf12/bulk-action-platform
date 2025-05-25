@@ -3,11 +3,12 @@ import { BaseController } from './BaseController';
 import { logger } from '../../utils/logger';
 import database from '../../config/database';
 import redis from '../../config/redis';
-
 import configManager from '../../config/app';
+import minioManager from '../../config/minio';
 
 /**
  * Health check controller for monitoring system status
+ * Updated to include MinIO health checks
  */
 export class HealthController extends BaseController {
   /**
@@ -21,6 +22,11 @@ export class HealthController extends BaseController {
         status: 'healthy',
         timestamp: new Date().toISOString(),
         version: configManager.getPackageConfig().npmPackageVersion,
+        services: {
+          database: database.isHealthy(),
+          redis: redis.isHealthy(),
+          minio: minioManager.isHealthy(),
+        },
       },
       'Service is healthy'
     );
@@ -28,17 +34,18 @@ export class HealthController extends BaseController {
 
   /**
    * GET /health/detailed
-   * Detailed health check with dependencies
+   * Detailed health check with dependencies including MinIO
    */
   detailedHealthCheck = async (req: Request, res: Response): Promise<void> => {
     const checks = {
       database: await this.checkDatabase(),
       redis: await this.checkRedis(),
+      minio: await this.checkMinio(),
       memory: this.checkMemory(),
       uptime: process.uptime(),
     };
 
-    const isHealthy = checks.database.healthy && checks.redis.healthy;
+    const isHealthy = checks.database.healthy && checks.redis.healthy && checks.minio.healthy;
     const statusCode = isHealthy ? 200 : 503;
 
     res.status(statusCode).json({
@@ -95,6 +102,47 @@ export class HealthController extends BaseController {
         error: error instanceof Error ? error.message : 'Unknown',
       });
       return { healthy: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  private async checkMinio(): Promise<{
+    healthy: boolean;
+    responseTime?: number;
+    bucketExists?: boolean;
+    error?: string;
+  }> {
+    const startTime = Date.now();
+
+    try {
+      const healthResult = await minioManager.healthCheck();
+      const responseTime = Date.now() - startTime;
+
+      if (!healthResult.connected) {
+        logger.error('MinIO health check failed', {
+          error: healthResult.error || 'MinIO not connected',
+        });
+        return {
+          healthy: false,
+          error: healthResult.error || 'MinIO not connected',
+          responseTime,
+        };
+      }
+
+      return {
+        healthy: true,
+        responseTime,
+        bucketExists: healthResult.bucketExists,
+      };
+    } catch (error) {
+      const responseTime = Date.now() - startTime;
+      logger.error('MinIO health check failed', {
+        error: error instanceof Error ? error.message : 'Unknown',
+      });
+      return {
+        healthy: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        responseTime,
+      };
     }
   }
 

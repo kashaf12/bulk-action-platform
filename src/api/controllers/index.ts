@@ -17,7 +17,7 @@ const bulkActionService = new BulkActionService(bulkActionRepository);
 const bulkActionStatService = new BulkActionStatService(bulkActionStatRepository);
 
 // Initialize controllers with dependency injection
-const bulkActionController = new BulkActionController(bulkActionService);
+const bulkActionController = new BulkActionController(bulkActionService, bulkActionStatService);
 const bulkActionStatController = new BulkActionStatController(
   bulkActionStatService,
   bulkActionService

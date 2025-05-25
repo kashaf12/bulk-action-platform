@@ -51,3 +51,25 @@ export class TooManyRequestsError extends Error {
     this.name = 'TooManyRequestsError';
   }
 }
+
+export class MinioStorageError extends Error {
+  constructor(
+    message: string,
+    public details?: unknown
+  ) {
+    super(message);
+    this.name = 'MinioStorageError';
+    Error.captureStackTrace(this, MinioStorageError);
+  }
+}
+
+export class UploadError extends Error {
+  constructor(
+    message: string,
+    public details?: unknown
+  ) {
+    super(message);
+    this.name = 'UploadError';
+    Error.captureStackTrace(this, UploadError);
+  }
+}

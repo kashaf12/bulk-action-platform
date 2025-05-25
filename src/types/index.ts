@@ -9,3 +9,4 @@ export * from './database';
 export * from './logging';
 export * from './services';
 export * from './entities';
+export * from './minio';

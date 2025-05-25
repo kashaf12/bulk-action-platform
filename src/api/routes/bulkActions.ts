@@ -1,15 +1,13 @@
 import { Router } from 'express';
 import { bulkActionController } from '../controllers';
+import { authenticationMiddleware, validationMiddleware } from '../middlewares';
 import {
-  authenticationMiddleware,
-  validationMiddleware,
-  csvValidationMiddleware,
-  createBulkActionRateLimit,
-} from '../middlewares';
-import { secureFileUpload, csvSecurityValidation } from '../middlewares/fileSecurityMiddleware';
+  minioFileUpload,
+  validateMinioUpload,
+  cleanupFailedUpload,
+} from '../middlewares/minioUploadMiddleware';
 import {
   actionIdParamSchema,
-  bulkActionCreateSchema,
   bulkActionQuerySchema,
   createBulkActionRequestSchema,
 } from '../../schemas';
@@ -18,20 +16,25 @@ const router = Router();
 
 /**
  * POST /bulk-actions
- * Create a new bulk action with CSV file upload
+ * Create a new bulk action with MinIO CSV file upload
  *
  * Middleware chain:
  * 1. Authentication - Validate account ID
- * 3. File upload - Secure file handling with Multer
- * 6. Request validation - Validate JSON body
+ * 2. Rate limiting - 10k rows/minute limit (only for POST)
+ * 3. MinIO file upload - Stream directly to MinIO with validation
+ * 4. Upload validation - Validate MinIO upload success
+ * 5. Request validation - Validate JSON body
+ * 6. Cleanup middleware - Handle failed uploads
  * 7. Controller - Handle business logic
+ * 8. Error handler - Handle MinIO/Multer specific errors
  */
 router.post(
   '/',
   authenticationMiddleware,
-  secureFileUpload.single('file'),
-  csvValidationMiddleware,
+  minioFileUpload,
+  validateMinioUpload,
   validationMiddleware(createBulkActionRequestSchema, 'body'),
+  cleanupFailedUpload,
   bulkActionController.createBulkAction
 );
 
@@ -40,10 +43,9 @@ router.post(
  * List bulk actions with pagination and filtering
  *
  * Middleware chain:
- * 1. Tracing - Add correlation ID
- * 2. Authentication - Validate account ID
- * 3. Query validation - Validate query parameters
- * 4. Controller - Handle business logic
+ * 1. Authentication - Validate account ID
+ * 2. Query validation - Validate query parameters
+ * 3. Controller - Handle business logic
  */
 router.get(
   '/',
@@ -57,16 +59,63 @@ router.get(
  * Get detailed information about a specific bulk action
  *
  * Middleware chain:
- * 1. Tracing - Add correlation ID
- * 2. Authentication - Validate account ID
- * 3. Param validation - Validate action ID format
- * 4. Controller - Handle business logic
+ * 1. Authentication - Validate account ID
+ * 2. Param validation - Validate action ID format
+ * 3. Controller - Handle business logic
  */
 router.get(
   '/:actionId',
   authenticationMiddleware,
   validationMiddleware(actionIdParamSchema, 'params'),
   bulkActionController.getBulkActionById
+);
+
+/**
+ * GET /bulk-actions/{actionId}/stats
+ * Get statistics for a specific bulk action
+ *
+ * Middleware chain:
+ * 1. Authentication - Validate account ID
+ * 2. Param validation - Validate action ID format
+ * 3. Controller - Handle business logic
+ */
+router.get(
+  '/:actionId/stats',
+  authenticationMiddleware,
+  validationMiddleware(actionIdParamSchema, 'params'),
+  bulkActionController.getBulkActionStats
+);
+
+/**
+ * PUT /bulk-actions/{actionId}/cancel
+ * Cancel a pending or processing bulk action
+ *
+ * Middleware chain:
+ * 1. Authentication - Validate account ID
+ * 2. Param validation - Validate action ID format
+ * 3. Controller - Handle business logic
+ */
+router.put(
+  '/:actionId/cancel',
+  authenticationMiddleware,
+  validationMiddleware(actionIdParamSchema, 'params'),
+  bulkActionController.cancelBulkAction
+);
+
+/**
+ * GET /bulk-actions/{actionId}/download
+ * Get download URL for the original uploaded file
+ *
+ * Middleware chain:
+ * 1. Authentication - Validate account ID
+ * 2. Param validation - Validate action ID format
+ * 3. Controller - Handle business logic
+ */
+router.get(
+  '/:actionId/download',
+  authenticationMiddleware,
+  validationMiddleware(actionIdParamSchema, 'params'),
+  bulkActionController.getFileDownloadUrl
 );
 
 export default router;

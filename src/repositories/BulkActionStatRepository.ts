@@ -45,8 +45,6 @@ export class BulkActionStatRepository extends BaseRepository<IBulkActionStat> {
 
       const result = await database.query(query, [actionId], traceId);
 
-      console.log(result, actionId);
-
       if (result.rows.length === 0) {
         log.debug('Bulk action stats not found by action ID', { actionId });
         return null;

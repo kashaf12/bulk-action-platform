@@ -29,6 +29,19 @@ const envSchema = z.object({
   REDIS_DATABASE: z.coerce.number().int().min(0).default(0),
   REDIS_CONNECT_TIMEOUT: z.coerce.number().int().min(0).default(2000),
 
+  // MinIO Configuration
+  MINIO_ENDPOINT: z.string().default('localhost'),
+  MINIO_PORT: z.coerce.number().int().min(1).max(65535).default(9000),
+  MINIO_USE_SSL: z.coerce.boolean().default(false),
+  MINIO_ACCESS_KEY: z.string().default('minioadmin'),
+  MINIO_SECRET_KEY: z.string().default('minioadmin'),
+  MINIO_BUCKET_NAME: z.string().default('storage'),
+  MINIO_REGION: z.string().default('us-east-1'),
+
+  // Worker Configuration
+  INGESTION_WORKERS: z.coerce.number().int().min(1).max(100).default(5),
+  CHUNKING_WORKERS: z.coerce.number().int().min(1).max(50).default(3),
+
   // Rate Limiting
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).default(60000), // 1 minute
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().min(1).default(10000),
@@ -203,6 +216,31 @@ class ConfigManager {
   public getPackageConfig() {
     return {
       npmPackageVersion: this.config.PACKAGE_VERSION,
+    };
+  }
+
+  /**
+   * Get MinIO configuration
+   */
+  public getMinioConfig() {
+    return {
+      endpoint: this.config.MINIO_ENDPOINT,
+      port: this.config.MINIO_PORT,
+      useSSL: this.config.MINIO_USE_SSL,
+      accessKey: this.config.MINIO_ACCESS_KEY,
+      secretKey: this.config.MINIO_SECRET_KEY,
+      bucketName: this.config.MINIO_BUCKET_NAME,
+      region: this.config.MINIO_REGION,
+    };
+  }
+
+  /**
+   * Get worker configuration
+   */
+  public getWorkerConfig() {
+    return {
+      ingestionWorkers: this.config.INGESTION_WORKERS,
+      chunkingWorkers: this.config.CHUNKING_WORKERS,
     };
   }
 

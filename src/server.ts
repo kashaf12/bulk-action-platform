@@ -7,6 +7,7 @@ import { logger } from './utils/logger';
 import configManager from './config/app';
 import database from './config/database';
 import redis from './config/redis';
+import minioManager from './config/minio';
 
 const appConfig = configManager.getAppConfig();
 const PORT = appConfig.port;
@@ -34,16 +35,27 @@ async function startServer(): Promise<void> {
       throw error;
     }
 
-    // // Initialize Redis connection
-    // try {
-    //   await redis.connect();
-    //   logger.info('Redis connection established');
-    // } catch (error) {
-    //   logger.error('Redis connection failed', {
-    //     error: error instanceof Error ? error.message : 'Unknown error',
-    //   });
-    //   throw error;
-    // }
+    // Initialize Redis connection
+    try {
+      await redis.connect();
+      logger.info('Redis connection established');
+    } catch (error) {
+      logger.error('Redis connection failed', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      throw error;
+    }
+
+    // Initialize MinIO connection
+    try {
+      await minioManager.connect();
+      logger.info('MinIO connection established');
+    } catch (error) {
+      logger.error('MinIO connection failed', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      throw error;
+    }
 
     // Create and start Express app
     const app = createApp();
@@ -53,6 +65,11 @@ async function startServer(): Promise<void> {
         port: PORT,
         environment: NODE_ENV,
         processId: process.pid,
+        dependencies: {
+          database: 'connected',
+          redis: 'connected',
+          minio: 'connected',
+        },
       });
     });
 
@@ -71,6 +88,10 @@ async function startServer(): Promise<void> {
           // Close Redis connections
           await redis.close();
           logger.info('Redis connections closed');
+
+          // Close MinIO connections
+          await minioManager.close();
+          logger.info('MinIO connections closed');
 
           logger.info('Graceful shutdown completed');
           process.exit(0);
