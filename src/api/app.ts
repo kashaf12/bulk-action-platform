@@ -22,7 +22,7 @@ export function createApp(): Application {
       origin: securityConfig.allowedOrigins,
       credentials: true,
       methods: ['GET', 'POST'],
-      allowedHeaders: ['Content-Type', 'Account-ID', 'X-Trace-ID'],
+      allowedHeaders: ['Content-Type', 'Account-ID'],
     })
   );
 

@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../middlewares/authenticationMiddleware';
 
 import { logger } from '../../utils/logger';
-import { sendError, sendPaginatedSuccess, sendSuccess } from '../../utils/response';
+import { sendPaginatedSuccess, sendSuccess } from '../../utils/response';
 
 /**
  * Base controller with common response handling patterns
@@ -33,19 +33,6 @@ export abstract class BaseController {
     traceId?: string
   ): void {
     sendPaginatedSuccess(res, data, pagination, message, traceId);
-  }
-
-  /**
-   * Handle error responses (though most errors go through error middleware)
-   */
-  protected error(
-    res: Response,
-    message: string,
-    statusCode: number = 500,
-    details?: any,
-    traceId?: string
-  ): void {
-    sendError(res, message, statusCode, details, traceId);
   }
 
   /**
