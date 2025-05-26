@@ -14,11 +14,11 @@ COPY tsconfig.json ./
 RUN npm ci
 
 # Copy source code
-# COPY src/ ./src/
-COPY dist/ ./dist/
+COPY src/ ./src/
+# COPY dist/ ./dist/
 
 # Build TypeScript
-# RUN npm run build
+RUN npm run build
 
 # Production stage
 FROM node:18-alpine AS production

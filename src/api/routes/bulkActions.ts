@@ -7,6 +7,7 @@ import {
   cleanupFailedUpload,
 } from '../middlewares/minioUploadMiddleware';
 import { idParamSchema, bulkActionQuerySchema, createBulkActionRequestSchema } from '../../schemas';
+import { rateLimitMiddleware } from '../middlewares/rateLimitMiddleware';
 
 const router = Router();
 
@@ -27,6 +28,7 @@ const router = Router();
 router.post(
   '/',
   authenticationMiddleware,
+  rateLimitMiddleware,
   minioFileUpload,
   validateMinioUpload,
   validationMiddleware(createBulkActionRequestSchema, 'body'),
@@ -46,6 +48,7 @@ router.post(
 router.get(
   '/',
   authenticationMiddleware,
+  rateLimitMiddleware,
   validationMiddleware(bulkActionQuerySchema, 'query'),
   bulkActionController.getBulkActions
 );
@@ -62,6 +65,7 @@ router.get(
 router.get(
   '/:id',
   authenticationMiddleware,
+  rateLimitMiddleware,
   validationMiddleware(idParamSchema, 'params'),
   bulkActionController.getBulkActionById
 );

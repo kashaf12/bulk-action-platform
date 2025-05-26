@@ -1,0 +1,46 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: system_logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: varlogs
+          __path__: /var/log/*log
+
+  - job_name: docker_logs
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        # Filter to include only logs from your application services
+        # You can add more services here
+        # e.g., 'name=^api$|name=^chunking$|name=^processing$|name=^postgres$|name=^redis$|name=^minio$'
+        # It's better to add the specific service names you want to monitor,
+        # this example assumes your services are named `api`, `chunking`, `processing`.
+        # Make sure to update the regex if your service names are different.
+        filters:
+          - name: name
+            values: ['api', 'chunking', 'processing', 'postgres', 'minio']
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container_name'
+      - source_labels: ['__meta_docker_image']
+        regex: '(.*)'
+        target_label: 'image'
+      - source_labels: ['__meta_docker_container_id']
+        target_label: 'instance'
+      - source_labels: ['__meta_docker_log_stream']
+        target_label: 'log_stream'
+      - source_labels: ['__meta_docker_container_name']
+        regex: '^/(.*)'
+        target_label: 'job'

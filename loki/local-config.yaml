@@ -1,0 +1,41 @@
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+
+common:
+  path_prefix: /loki
+  replication_factor: 1
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2020-10-27
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v13
+      # Removed 'period: 24h' as it's no longer a valid field here.
+
+storage_config:
+  boltdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/cache
+  filesystem:
+    directory: /loki/chunks
+
+limits_config:
+  max_streams_per_user: 0
+  max_query_series: 2000
+  retention_period: 7d
+  allow_structured_metadata: false
+
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /loki/rules
+  enable_api: true

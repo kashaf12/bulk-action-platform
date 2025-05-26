@@ -376,7 +376,8 @@ class RedisManager {
   }
 
   /**
-   * Rate limiting - increment with expiration
+   * Rate limiting - increment with expiration (traditional fixed window counter)
+   * This method is already present but is a different rate limiting approach
    */
   public async rateLimit(
     key: string,
@@ -423,6 +424,75 @@ class RedisManager {
         error: error instanceof Error ? error.message : String(error),
       });
       throw new ServiceUnavailableError(`Redis rate limit failed: ${error}`);
+    }
+  }
+
+  /**
+   * Sorted Set operations - Add members to a sorted set
+   */
+  public async zadd(key: string, score: number, member: string, traceId?: string): Promise<number> {
+    const log = traceId ? logger.withTrace(traceId) : logger;
+    try {
+      const client = this.getClient();
+      // The zAdd method in 'redis' package returns the number of elements added
+      const result = await client.zAdd(key, { score, value: member });
+      log.debug('Redis ZADD operation successful', { key, score, member, result });
+      return result;
+    } catch (error) {
+      log.error('Redis ZADD operation failed', {
+        key,
+        score,
+        member,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new ServiceUnavailableError(`Redis ZADD failed: ${error}`);
+    }
+  }
+
+  /**
+   * Sorted Set operations - Remove members from a sorted set by score range
+   */
+  public async zremrangebyscore(
+    key: string,
+    min: string,
+    max: string,
+    traceId?: string
+  ): Promise<number> {
+    const log = traceId ? logger.withTrace(traceId) : logger;
+    try {
+      const client = this.getClient();
+      // The zRemRangeByScore method in 'redis' package returns the number of elements removed
+      const result = await client.zRemRangeByScore(key, min, max);
+      log.debug('Redis ZREMRANGEBYSCORE operation successful', { key, min, max, removed: result });
+      return result;
+    } catch (error) {
+      log.error('Redis ZREMRANGEBYSCORE operation failed', {
+        key,
+        min,
+        max,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new ServiceUnavailableError(`Redis ZREMRANGEBYSCORE failed: ${error}`);
+    }
+  }
+
+  /**
+   * Sorted Set operations - Get the number of members in a sorted set
+   */
+  public async zcard(key: string, traceId?: string): Promise<number> {
+    const log = traceId ? logger.withTrace(traceId) : logger;
+    try {
+      const client = this.getClient();
+      // The zCard method in 'redis' package returns the cardinality (number of elements) of the sorted set
+      const result = await client.zCard(key);
+      log.debug('Redis ZCARD operation successful', { key, count: result });
+      return result;
+    } catch (error) {
+      log.error('Redis ZCARD operation failed', {
+        key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new ServiceUnavailableError(`Redis ZCARD failed: ${error}`);
     }
   }
 

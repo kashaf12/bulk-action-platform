@@ -4,6 +4,7 @@ import bulkActionStatsRoutes from './bulkActionStats';
 import healthRoutes from './health';
 import { logger } from '../../utils/logger';
 import config from '../../config/app';
+import { rateLimitMiddleware } from '../middlewares/rateLimitMiddleware';
 
 const router = Router();
 

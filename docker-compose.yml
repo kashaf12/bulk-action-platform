@@ -338,3 +338,45 @@ services:
         max-size: "10m"
         max-file: "3"
         labels: "service=minio-init"
+
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    ports:
+      - "3100:3100"
+    # command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      # - ./loki:/etc/loki
+      - loki_data:/loki
+    restart: unless-stopped
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3001:3000" # Map to 3001 to avoid conflict if API uses 3000
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    volumes:
+      - /var/log:/var/log
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./promtail:/etc/promtail
+    command: -config.file=/etc/promtail/config.yaml
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+volumes:
+  loki_data:
+  grafana_data:    

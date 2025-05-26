@@ -7,6 +7,7 @@ import { Router } from 'express';
 import { bulkActionStatController } from '../controllers';
 import { authenticationMiddleware, validationMiddleware } from '../middlewares';
 import { idParamSchema } from '../../schemas';
+import { rateLimitMiddleware } from '../middlewares/rateLimitMiddleware';
 
 const router = Router();
 
@@ -22,6 +23,7 @@ const router = Router();
 router.get(
   '/:id/stats',
   authenticationMiddleware,
+  rateLimitMiddleware,
   validationMiddleware(idParamSchema, 'params'),
   bulkActionStatController.getBulkActionStats
 );
