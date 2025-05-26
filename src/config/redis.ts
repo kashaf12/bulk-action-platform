@@ -35,13 +35,13 @@ class RedisManager {
     const envConfig = configManager.getRedisConfig();
 
     return {
-      host: envConfig.host || 'localhost',
-      port: envConfig.port || 6379,
-      password: envConfig.password || undefined,
-      database: envConfig.database || 0,
-      connectTimeout: envConfig.connectTimeout || 2000,
-      retryDelayOnFailover: 1000,
-      maxRetriesPerRequest: 3,
+      host: envConfig.host,
+      port: envConfig.port,
+      password: envConfig.password,
+      database: envConfig.database,
+      connectTimeout: envConfig.connectTimeout,
+      retryDelayOnFailover: envConfig.retryDelayOnFailover,
+      maxRetriesPerRequest: envConfig.maxRetriesPerRequest,
     };
   }
 
