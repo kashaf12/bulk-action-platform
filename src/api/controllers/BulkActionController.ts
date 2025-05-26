@@ -6,11 +6,7 @@ import { BulkActionStatService } from '../../services/BulkActionStatService';
 import { FileUploadService } from '../../storage/fileUploadService';
 import { logger } from '../../utils/logger';
 import { NotFoundError, ValidationError } from '../../utils/error';
-import {
-  actionIdParamSchema,
-  bulkActionQuerySchema,
-  createBulkActionRequestSchema,
-} from '../../schemas';
+import { idParamSchema, bulkActionQuerySchema, createBulkActionRequestSchema } from '../../schemas';
 
 /**
  * Controller for handling bulk action operations with MinIO file upload
@@ -51,7 +47,7 @@ export class BulkActionController extends BaseController {
       logger.info('Processing bulk action with MinIO upload', {
         traceId: authenticatedRequest.traceId,
         accountId: authenticatedRequest.accountId,
-        actionId: minioFileInfo.actionId,
+        id: minioFileInfo.id,
         filePath: minioFileInfo.filePath,
         fileSize: minioFileInfo.fileSize,
         originalName: minioFileInfo.originalName,
@@ -64,7 +60,7 @@ export class BulkActionController extends BaseController {
         const result = await this.fileUploadService.processFileUpload(
           {
             accountId: authenticatedRequest.accountId,
-            actionId: minioFileInfo.actionId,
+            id: minioFileInfo.id,
             filePath: minioFileInfo.filePath,
             fileName: minioFileInfo.originalName,
             fileSize: minioFileInfo.fileSize,
@@ -90,7 +86,7 @@ export class BulkActionController extends BaseController {
         logger.info('Bulk action created successfully with MinIO file', {
           traceId: authenticatedRequest.traceId,
           accountId: authenticatedRequest.accountId,
-          actionId: result.bulkAction.actionId,
+          id: result.bulkAction.id,
           filePath: result.uploadResult.filePath,
           totalEntities: result.bulkAction.totalEntities,
           status: result.bulkAction.status,
@@ -98,7 +94,7 @@ export class BulkActionController extends BaseController {
 
         // TODO: Enqueue BullMQ job for processing (will be implemented later)
         logger.info('Bulk action queued for processing', {
-          actionId: result.bulkAction.actionId,
+          id: result.bulkAction.id,
           filePath: result.uploadResult.filePath,
           note: 'BullMQ integration pending',
         });
@@ -106,7 +102,7 @@ export class BulkActionController extends BaseController {
         this.success(
           res,
           {
-            actionId: result.bulkAction.actionId,
+            id: result.bulkAction.id,
             status: result.bulkAction.status,
             totalEntities: result.bulkAction.totalEntities,
             scheduledAt: result.bulkAction.scheduledAt,
@@ -131,7 +127,7 @@ export class BulkActionController extends BaseController {
         // Handle file upload service errors
         logger.error('Bulk action processing failed', {
           traceId: authenticatedRequest.traceId,
-          actionId: minioFileInfo.actionId,
+          id: minioFileInfo.id,
           error:
             processingError instanceof Error ? processingError.message : String(processingError),
         });
@@ -169,7 +165,7 @@ export class BulkActionController extends BaseController {
       this.paginated(
         res,
         data.map(action => ({
-          actionId: action.actionId,
+          id: action.id,
           entityType: action.entityType,
           actionType: action.actionType,
           status: action.status,
@@ -201,22 +197,22 @@ export class BulkActionController extends BaseController {
   };
 
   /**
-   * GET /bulk-actions/{actionId}
+   * GET /bulk-actions/{id}
    * Get detailed information about a specific bulk action (enhanced)
    */
   getBulkActionById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const authenticatedRequest = req as AuthenticatedRequest;
     await this.executeWithErrorHandling(authenticatedRequest, res, async () => {
-      const { actionId } = actionIdParamSchema.parse(authenticatedRequest.params);
+      const { id } = idParamSchema.parse(authenticatedRequest.params);
 
       logger.debug('Fetching bulk action details', {
         traceId: authenticatedRequest.traceId,
         accountId: authenticatedRequest.accountId,
-        actionId,
+        id,
       });
 
       const bulkAction = await this.bulkActionService.getBulkActionById(
-        actionId,
+        id,
         authenticatedRequest.traceId
       );
 
@@ -236,7 +232,7 @@ export class BulkActionController extends BaseController {
         } catch (error) {
           logger.warn('Failed to generate file download URL', {
             traceId: authenticatedRequest.traceId,
-            actionId,
+            id,
             filePath: bulkAction.configuration.filePath,
             error: error instanceof Error ? error.message : String(error),
           });
@@ -246,7 +242,7 @@ export class BulkActionController extends BaseController {
       this.success(
         res,
         {
-          actionId: bulkAction.actionId,
+          id: bulkAction.id,
           entityType: bulkAction.entityType,
           actionType: bulkAction.actionType,
           status: bulkAction.status,
@@ -285,23 +281,23 @@ export class BulkActionController extends BaseController {
   };
 
   /**
-   * GET /bulk-actions/{actionId}/stats
+   * GET /bulk-actions/{id}/stats
    * Get statistics for a specific bulk action (unchanged)
    */
   getBulkActionStats = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const authenticatedRequest = req as AuthenticatedRequest;
     await this.executeWithErrorHandling(authenticatedRequest, res, async () => {
-      const { actionId } = actionIdParamSchema.parse(req.params);
+      const { id } = idParamSchema.parse(req.params);
 
       logger.debug('Fetching bulk action statistics', {
         traceId: authenticatedRequest.traceId,
         accountId: authenticatedRequest.accountId,
-        actionId,
+        id,
       });
 
       // Verify bulk action exists and belongs to account
       const bulkAction = await this.bulkActionService.getBulkActionById(
-        actionId,
+        id,
         authenticatedRequest.traceId
       );
       if (!bulkAction) {
@@ -310,14 +306,14 @@ export class BulkActionController extends BaseController {
 
       // Get detailed statistics
       const stats = await this.bulkActionStatService.getDetailedStats(
-        actionId,
+        id,
         authenticatedRequest.traceId
       );
 
       this.success(
         res,
         {
-          actionId,
+          id,
           status: bulkAction.status,
           totalRecords: stats.totalRecords,
           successfulRecords: stats.successfulRecords,
@@ -340,22 +336,22 @@ export class BulkActionController extends BaseController {
   };
 
   /**
-   * PUT /bulk-actions/{actionId}/cancel
+   * PUT /bulk-actions/{id}/cancel
    * Cancel a pending or processing bulk action (unchanged)
    */
   cancelBulkAction = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const authenticatedRequest = req as AuthenticatedRequest;
     await this.executeWithErrorHandling(authenticatedRequest, res, async () => {
-      const { actionId } = actionIdParamSchema.parse(authenticatedRequest.params);
+      const { id } = idParamSchema.parse(authenticatedRequest.params);
 
       logger.info('Cancelling bulk action', {
         traceId: authenticatedRequest.traceId,
         accountId: authenticatedRequest.accountId,
-        actionId,
+        id,
       });
 
       const bulkAction = await this.bulkActionService.getBulkActionById(
-        actionId,
+        id,
         authenticatedRequest.traceId
       );
       if (!bulkAction) {
@@ -369,21 +365,21 @@ export class BulkActionController extends BaseController {
 
       // Cancel the bulk action
       const cancelledAction = await this.bulkActionService.cancelBulkAction(
-        actionId,
+        id,
         authenticatedRequest.traceId
       );
 
       logger.info('Bulk action cancelled successfully', {
         traceId: authenticatedRequest.traceId,
         accountId: authenticatedRequest.accountId,
-        actionId,
+        id,
         previousStatus: bulkAction.status,
       });
 
       this.success(
         res,
         {
-          actionId: cancelledAction.actionId,
+          id: cancelledAction.id,
           status: cancelledAction.status,
           cancelledAt: cancelledAction.updatedAt,
         },
@@ -395,25 +391,25 @@ export class BulkActionController extends BaseController {
   };
 
   /**
-   * GET /bulk-actions/{actionId}/download
+   * GET /bulk-actions/{id}/download
    * Get download URL for the original uploaded file
    */
   getFileDownloadUrl = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const authenticatedRequest = req as AuthenticatedRequest;
     await this.executeWithErrorHandling(authenticatedRequest, res, async () => {
-      const { actionId } = actionIdParamSchema.parse(authenticatedRequest.params);
+      const { id } = idParamSchema.parse(authenticatedRequest.params);
       const expiryHours = parseInt(authenticatedRequest.query.expiryHours as string) || 1;
       const expirySeconds = Math.min(expiryHours * 3600, 24 * 3600); // Max 24 hours
 
       logger.debug('Generating file download URL', {
         traceId: authenticatedRequest.traceId,
         accountId: authenticatedRequest.accountId,
-        actionId,
+        id,
         expiryHours,
       });
 
       const bulkAction = await this.bulkActionService.getBulkActionById(
-        actionId,
+        id,
         authenticatedRequest.traceId
       );
       if (!bulkAction) {
@@ -434,7 +430,7 @@ export class BulkActionController extends BaseController {
       this.success(
         res,
         {
-          actionId,
+          id,
           downloadUrl,
           expiresAt: new Date(Date.now() + expirySeconds * 1000).toISOString(),
           fileName: bulkAction.configuration?.fileName,

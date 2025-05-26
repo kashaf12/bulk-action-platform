@@ -17,7 +17,6 @@ export interface BulkActionConfiguration {
 }
 
 export interface IBulkAction extends IEntity {
-  actionId: string;
   accountId: string;
   entityType: EntityType;
   actionType: BulkActionType;
@@ -32,7 +31,7 @@ export interface IBulkAction extends IEntity {
 }
 
 export interface BulkActionCreateData {
-  actionId: string;
+  id?: string;
   accountId: string;
   entityType: EntityType;
   actionType: BulkActionType;

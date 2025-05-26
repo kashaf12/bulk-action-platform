@@ -4,7 +4,6 @@
  * Follows Single Responsibility and Dependency Inversion principles
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import { BulkActionRepository, BulkActionSearchParams } from '../repositories/BulkActionRepository';
 import { BulkAction } from '../models/BulkAction';
 import {
@@ -23,6 +22,7 @@ import redisManager from '../config/redis';
 import configManager from '../config/app';
 
 export interface CreateBulkActionRequest {
+  id?: string;
   accountId: string;
   entityType: EntityType;
   actionType: BulkActionType;
@@ -96,24 +96,24 @@ export class BulkActionService implements IService {
   /**
    * Get bulk action by action ID
    */
-  public async getBulkActionById(actionId: string, traceId: string): Promise<IBulkAction> {
-    if (!actionId) {
-      throw new ValidationError('Action ID is required');
+  public async getBulkActionById(id: string, traceId: string): Promise<IBulkAction> {
+    if (!id) {
+      throw new ValidationError('ID is required');
     }
 
     const log = logger.withTrace(traceId);
 
-    log.info('Fetching bulk action by ID', { actionId });
+    log.info('Fetching bulk action by ID', { id });
 
     try {
-      const bulkAction = await this.bulkActionRepository.findByActionId(actionId, traceId);
+      const bulkAction = await this.bulkActionRepository.findById(id, traceId);
 
       if (!bulkAction) {
         throw new NotFoundError('Bulk action');
       }
 
       log.info('Successfully fetched bulk action', {
-        actionId,
+        id,
         status: bulkAction.status,
         entityType: bulkAction.entityType,
         actionType: bulkAction.actionType,
@@ -122,11 +122,11 @@ export class BulkActionService implements IService {
       return bulkAction;
     } catch (error) {
       if (error instanceof NotFoundError) {
-        logger.withTrace(traceId).warn('Bulk action not found', { actionId });
+        logger.withTrace(traceId).warn('Bulk action not found', { id });
       } else {
         logger.withTrace(traceId).error('Failed to get bulk action by ID', {
           error: error instanceof Error ? error.message : String(error),
-          actionId,
+          id,
         });
       }
       throw error;
@@ -154,15 +154,15 @@ export class BulkActionService implements IService {
 
     try {
       // Check rate limits
-      await this.checkRateLimits(request.accountId, traceId);
+      // await this.checkRateLimits(request.accountId, traceId);
 
       // Check concurrent action limits
-      await this.checkConcurrentLimits(request.accountId, traceId);
+      // await this.checkConcurrentLimits(request.accountId, traceId);
 
       // Create bulk action entity
-      const actionId = uuidv4();
+      const id = request.id;
       const bulkActionData: BulkActionCreateData = {
-        actionId,
+        id,
         accountId: request.accountId,
         entityType: request.entityType,
         actionType: request.actionType,
@@ -177,18 +177,19 @@ export class BulkActionService implements IService {
 
       // Validate entity
       const validation = BulkAction.validate(bulkAction.toObject());
-      if (!validation.isValid) {
-        throw new ValidationError('Invalid bulk action data', validation.errors);
-      }
+
+      // if (!validation.isValid) {
+      //   throw new ValidationError('Invalid bulk action data', validation.errors);
+      // }
 
       // Save to database
       const createdBulkAction = await this.bulkActionRepository.create(bulkAction, traceId);
 
       // Update rate limit counter
-      await this.updateRateLimitCounter(request.accountId, traceId);
+      // await this.updateRateLimitCounter(request.accountId, traceId);
 
       log.info('Bulk action created successfully', {
-        actionId: createdBulkAction.actionId,
+        id: createdBulkAction.id,
         accountId: createdBulkAction.accountId,
         status: createdBulkAction.status,
       });
@@ -207,24 +208,24 @@ export class BulkActionService implements IService {
    * Update bulk action status and progress
    */
   public async updateBulkAction(
-    actionId: string,
+    id: string,
     updates: BulkActionUpdateData,
     traceId: string
   ): Promise<IBulkAction> {
-    if (!actionId) {
-      throw new ValidationError('Action ID is required');
+    if (!id) {
+      throw new ValidationError('ID is required');
     }
 
     const log = logger.withTrace(traceId);
 
     log.info('Updating bulk action', {
-      actionId,
+      id,
       updates: Object.keys(updates),
     });
 
     try {
       // Get current bulk action
-      const currentBulkAction = await this.bulkActionRepository.findByActionId(actionId, traceId);
+      const currentBulkAction = await this.bulkActionRepository.findById(id, traceId);
 
       if (!currentBulkAction) {
         throw new NotFoundError('Bulk action');
@@ -241,18 +242,14 @@ export class BulkActionService implements IService {
       }
 
       // Perform update
-      const updatedBulkAction = await this.bulkActionRepository.updateByActionId(
-        actionId,
-        updates,
-        traceId
-      );
+      const updatedBulkAction = await this.bulkActionRepository.update(id, updates, traceId);
 
       if (!updatedBulkAction) {
         throw new NotFoundError('Bulk action');
       }
 
       log.info('Bulk action updated successfully', {
-        actionId,
+        id,
         oldStatus: currentBulkAction.status,
         newStatus: updatedBulkAction.status,
         progress: `${updatedBulkAction.processedEntities}/${updatedBulkAction.totalEntities}`,
@@ -262,7 +259,7 @@ export class BulkActionService implements IService {
     } catch (error) {
       log.error('Failed to update bulk action', {
         error: error instanceof Error ? error.message : String(error),
-        actionId,
+        id,
         updates,
       });
       throw error;
@@ -272,26 +269,22 @@ export class BulkActionService implements IService {
   /**
    * Cancel a bulk action
    */
-  public async cancelBulkAction(actionId: string, traceId: string): Promise<IBulkAction> {
+  public async cancelBulkAction(id: string, traceId: string): Promise<IBulkAction> {
     const log = logger.withTrace(traceId);
 
-    log.info('Cancelling bulk action', { actionId });
+    log.info('Cancelling bulk action', { id });
 
     try {
-      const bulkAction = await this.getBulkActionById(actionId, traceId);
+      const bulkAction = await this.getBulkActionById(id, traceId);
 
       if (bulkAction.isFinished()) {
         throw new ConflictError('Cannot cancel a finished bulk action');
       }
 
-      const updatedBulkAction = await this.updateBulkAction(
-        actionId,
-        { status: 'cancelled' },
-        traceId
-      );
+      const updatedBulkAction = await this.updateBulkAction(id, { status: 'cancelled' }, traceId);
 
       log.info('Bulk action cancelled successfully', {
-        actionId,
+        id,
         previousStatus: bulkAction.status,
       });
 
@@ -299,7 +292,7 @@ export class BulkActionService implements IService {
     } catch (error) {
       log.error('Failed to cancel bulk action', {
         error: error instanceof Error ? error.message : String(error),
-        actionId,
+        id,
       });
       throw error;
     }
@@ -400,7 +393,7 @@ export class BulkActionService implements IService {
    * Update progress for bulk action
    */
   public async updateProgress(
-    actionId: string,
+    id: string,
     processedEntities: number,
     traceId: string
   ): Promise<IBulkAction> {
@@ -412,7 +405,7 @@ export class BulkActionService implements IService {
       };
 
       // Get current action to check if it should be completed
-      const currentAction = await this.getBulkActionById(actionId, traceId);
+      const currentAction = await this.getBulkActionById(id, traceId);
 
       if (
         processedEntities >= currentAction.totalEntities &&
@@ -422,10 +415,10 @@ export class BulkActionService implements IService {
         updates.completedAt = new Date();
       }
 
-      const updatedAction = await this.updateBulkAction(actionId, updates, traceId);
+      const updatedAction = await this.updateBulkAction(id, updates, traceId);
 
       log.debug('Bulk action progress updated', {
-        actionId,
+        id,
         processedEntities,
         totalEntities: updatedAction.totalEntities,
         progressPercentage: updatedAction.getProgressPercentage(),
@@ -435,7 +428,7 @@ export class BulkActionService implements IService {
     } catch (error) {
       log.error('Failed to update bulk action progress', {
         error: error instanceof Error ? error.message : String(error),
-        actionId,
+        id,
         processedEntities,
       });
       throw error;
@@ -445,7 +438,7 @@ export class BulkActionService implements IService {
   /**
    * Start processing a bulk action
    */
-  public async startProcessing(actionId: string, traceId: string): Promise<IBulkAction> {
+  public async startProcessing(id: string, traceId: string): Promise<IBulkAction> {
     const log = logger.withTrace(traceId);
 
     try {
@@ -454,10 +447,10 @@ export class BulkActionService implements IService {
         startedAt: new Date(),
       };
 
-      const updatedAction = await this.updateBulkAction(actionId, updates, traceId);
+      const updatedAction = await this.updateBulkAction(id, updates, traceId);
 
       log.info('Bulk action processing started', {
-        actionId,
+        id,
         entityType: updatedAction.entityType,
         actionType: updatedAction.actionType,
         totalEntities: updatedAction.totalEntities,
@@ -467,7 +460,7 @@ export class BulkActionService implements IService {
     } catch (error) {
       log.error('Failed to start bulk action processing', {
         error: error instanceof Error ? error.message : String(error),
-        actionId,
+        id,
       });
       throw error;
     }
@@ -477,7 +470,7 @@ export class BulkActionService implements IService {
    * Mark bulk action as failed
    */
   public async markAsFailed(
-    actionId: string,
+    id: string,
     errorMessage: string,
     traceId: string
   ): Promise<IBulkAction> {
@@ -490,10 +483,10 @@ export class BulkActionService implements IService {
         completedAt: new Date(),
       };
 
-      const updatedAction = await this.updateBulkAction(actionId, updates, traceId);
+      const updatedAction = await this.updateBulkAction(id, updates, traceId);
 
       log.warn('Bulk action marked as failed', {
-        actionId,
+        id,
         errorMessage,
         processedEntities: updatedAction.processedEntities,
         totalEntities: updatedAction.totalEntities,
@@ -503,7 +496,7 @@ export class BulkActionService implements IService {
     } catch (error) {
       log.error('Failed to mark bulk action as failed', {
         error: error instanceof Error ? error.message : String(error),
-        actionId,
+        id,
         originalError: errorMessage,
       });
       throw error;

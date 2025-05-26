@@ -24,7 +24,7 @@ router.get('/', (req: Request, res: Response) => {
       timestamp: new Date().toISOString(),
       endpoints: {
         bulkActions: '/bulk-actions',
-        bulkActionStats: '/bulk-actions/{actionId}/stats',
+        bulkActionStats: '/bulk-actions/{id}/stats',
         health: '/health',
         documentation: '/docs', // Future implementation
       },
@@ -57,17 +57,17 @@ router.get('/docs', (req: Request, res: Response) => {
         bulkActions: {
           create: 'POST /bulk-actions',
           list: 'GET /bulk-actions',
-          get: 'GET /bulk-actions/{actionId}',
-          stats: 'GET /bulk-actions/{actionId}/stats',
-          cancel: 'PUT /bulk-actions/{actionId}/cancel',
+          get: 'GET /bulk-actions/{id}',
+          stats: 'GET /bulk-actions/{id}/stats',
+          cancel: 'PUT /bulk-actions/{id}/cancel',
         },
         bulkActionStats: {
-          get: 'GET /bulk-actions/{actionId}/stats',
-          initialize: 'POST /bulk-actions/{actionId}/stats/initialize',
-          increment: 'PUT /bulk-actions/{actionId}/stats/increment',
-          validate: 'GET /bulk-actions/{actionId}/stats/validate',
-          delete: 'DELETE /bulk-actions/{actionId}/stats',
-          exists: 'GET /bulk-actions/{actionId}/stats/exists',
+          get: 'GET /bulk-actions/{id}/stats',
+          initialize: 'POST /bulk-actions/{id}/stats/initialize',
+          increment: 'PUT /bulk-actions/{id}/stats/increment',
+          validate: 'GET /bulk-actions/{id}/stats/validate',
+          delete: 'DELETE /bulk-actions/{id}/stats',
+          exists: 'GET /bulk-actions/{id}/stats/exists',
         },
         health: {
           basic: 'GET /health',

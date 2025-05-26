@@ -143,6 +143,7 @@ export abstract class BaseRepository<T extends IEntity> implements IRepository<T
       `;
 
       const result = await database.query(query, values, traceId);
+
       if (result.rows.length === 0) {
         throw new Error('Failed to create entity, no rows returned');
       }

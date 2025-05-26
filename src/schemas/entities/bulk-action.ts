@@ -14,9 +14,9 @@ export const bulkActionStatusSchema = z.enum([
   'cancelled',
 ]);
 
-export const bulkActionTypeSchema = z.enum(['bulk_update', 'bulk_delete', 'bulk_create']);
+export const bulkActionTypeSchema = z.enum(['bulk_update']); // We can expand this later for more action types
 
-export const entityTypeSchema = z.enum(['contact', 'company', 'lead', 'opportunity', 'task']);
+export const entityTypeSchema = z.enum(['contact']); // we can expand this later for more entity types
 
 // Configuration schema
 export const bulkActionConfigurationSchema = z
@@ -27,7 +27,7 @@ export const bulkActionConfigurationSchema = z
 
 // Full bulk action schema
 export const bulkActionSchema = baseEntitySchema.extend({
-  actionId: uuidSchema,
+  id: uuidSchema,
   accountId: z.string().min(1, 'Account ID is required'),
   entityType: entityTypeSchema,
   actionType: bulkActionTypeSchema,
@@ -43,7 +43,7 @@ export const bulkActionSchema = baseEntitySchema.extend({
 
 // Bulk action creation schema
 export const bulkActionCreateSchema = z.object({
-  actionId: uuidSchema,
+  id: uuidSchema,
   accountId: z.string().min(1, 'Account ID is required'),
   entityType: entityTypeSchema,
   actionType: bulkActionTypeSchema,
@@ -54,8 +54,8 @@ export const bulkActionCreateSchema = z.object({
   configuration: bulkActionConfigurationSchema.default({}),
 });
 
-export const actionIdParamSchema = z.object({
-  actionId: z.string().uuid('Invalid action ID format'),
+export const idParamSchema = z.object({
+  id: z.string().uuid('Invalid action ID format'),
 });
 
 // Query parameters schema

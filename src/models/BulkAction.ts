@@ -16,7 +16,6 @@ import { bulkActionSchema } from '../schemas/entities/bulk-action';
 import { FieldValidators } from '../types';
 
 export class BulkAction extends BaseEntity implements IBulkAction {
-  public actionId: string;
   public accountId: string;
   public entityType: EntityType;
   public actionType: BulkActionType;
@@ -31,7 +30,7 @@ export class BulkAction extends BaseEntity implements IBulkAction {
 
   constructor(data: IBulkAction) {
     super(data);
-    this.actionId = data.actionId;
+    this.id = data.id;
     this.accountId = data.accountId;
     this.entityType = data.entityType;
     this.actionType = data.actionType;
@@ -54,7 +53,7 @@ export class BulkAction extends BaseEntity implements IBulkAction {
   }
 
   public static getRequiredFields(): string[] {
-    return ['actionId', 'accountId', 'entityType', 'actionType'];
+    return ['accountId', 'entityType', 'actionType'];
   }
 
   public static getOptionalFields(): string[] {
@@ -80,10 +79,10 @@ export class BulkAction extends BaseEntity implements IBulkAction {
         );
       },
       actionType: (value: unknown): boolean => {
-        return ['bulk_update', 'bulk_delete', 'bulk_create'].includes(value as string);
+        return ['bulk_update'].includes(value as string);
       },
       entityType: (value: unknown): boolean => {
-        return ['contact', 'company', 'lead', 'opportunity', 'task'].includes(value as string);
+        return ['contact'].includes(value as string);
       },
       totalEntities: (value: unknown): boolean => {
         return typeof value === 'number' && value >= 0;
@@ -101,7 +100,6 @@ export class BulkAction extends BaseEntity implements IBulkAction {
   public static getColumnMappings(): Record<string, string> {
     return {
       ...super.getColumnMappings(),
-      actionId: 'action_id',
       accountId: 'account_id',
       entityType: 'entity_type',
       actionType: 'action_type',
@@ -125,13 +123,8 @@ export class BulkAction extends BaseEntity implements IBulkAction {
     const entityData = this.mapDbRowToEntityData(row, columnMappings);
 
     // Validate required fields
-    if (
-      !entityData.actionId ||
-      !entityData.accountId ||
-      !entityData.entityType ||
-      !entityData.actionType
-    ) {
-      throw new Error('BulkAction requires actionId, accountId, entityType, and actionType fields');
+    if (!entityData.accountId || !entityData.entityType || !entityData.actionType) {
+      throw new Error('BulkAction requires accountId, entityType, and actionType fields');
     }
 
     // Set defaults for optional fields
@@ -149,28 +142,32 @@ export class BulkAction extends BaseEntity implements IBulkAction {
   public toObject(): Record<string, unknown> {
     return {
       ...super.toObject(),
-      action_id: this.actionId,
-      account_id: this.accountId,
-      entity_type: this.entityType,
-      action_type: this.actionType,
+      accountId: this.accountId,
+      entityType: this.entityType,
+      actionType: this.actionType,
       status: this.status,
-      total_entities: this.totalEntities,
-      processed_entities: this.processedEntities,
-      scheduled_at: this.scheduledAt,
-      started_at: this.startedAt,
-      completed_at: this.completedAt,
+      totalEntities: this.totalEntities,
+      processedEntities: this.processedEntities,
+      scheduledAt: this.scheduledAt,
+      startedAt: this.startedAt,
+      completedAt: this.completedAt,
       configuration: JSON.stringify(this.configuration),
-      error_message: this.errorMessage,
+      errorMessage: this.errorMessage,
     };
   }
 
   public toDbObject(): Record<string, unknown> {
-    const obj = super.toDbObject();
-    // Ensure configuration is stored as JSON string in database
-    if (obj.configuration) {
-      obj.configuration = JSON.stringify(this.configuration);
+    const obj = this.toObject();
+    const mappings = BulkAction.getColumnMappings();
+    const dbObj: Record<string, unknown> = {};
+
+    for (const [entityField, dbColumn] of Object.entries(mappings)) {
+      if (obj.hasOwnProperty(entityField)) {
+        dbObj[dbColumn] = obj[entityField];
+      }
     }
-    return obj;
+
+    return dbObj;
   }
 
   /**
@@ -303,8 +300,7 @@ export class BulkAction extends BaseEntity implements IBulkAction {
    */
   public toApiResponse(): Record<string, unknown> {
     return {
-      actionId: this.actionId,
-      accountId: this.accountId,
+      id: this.id,
       entityType: this.entityType,
       actionType: this.actionType,
       status: this.status,
@@ -328,7 +324,7 @@ export class BulkAction extends BaseEntity implements IBulkAction {
    */
   public getLogSummary(): Record<string, unknown> {
     return {
-      actionId: this.actionId,
+      id: this.id,
       accountId: this.accountId,
       entityType: this.entityType,
       actionType: this.actionType,

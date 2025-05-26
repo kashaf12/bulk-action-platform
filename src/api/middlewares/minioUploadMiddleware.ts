@@ -17,7 +17,7 @@ const processingConfig = configManager.getProcessingConfig();
 interface MinioMulterFile extends Express.Multer.File {
   etag: string;
   filePath: string;
-  actionId: string;
+  id: string;
 }
 
 /**
@@ -83,7 +83,7 @@ export const validateMinioUpload = (req: Request, res: Response, next: NextFunct
     const minioFile = authenticatedReq.file as MinioMulterFile;
 
     // Validate required MinIO-specific fields
-    if (!minioFile.etag || !minioFile.filePath || !minioFile.actionId) {
+    if (!minioFile.etag || !minioFile.filePath || !minioFile.id) {
       throw new ValidationError('Invalid file upload: missing MinIO metadata');
     }
 
@@ -98,7 +98,7 @@ export const validateMinioUpload = (req: Request, res: Response, next: NextFunct
     }
 
     log.info('MinIO file upload validated successfully', {
-      actionId: minioFile.actionId,
+      id: minioFile.id,
       filePath: minioFile.filePath,
       fileSize: minioFile.size,
       etag: minioFile.etag,
@@ -107,7 +107,7 @@ export const validateMinioUpload = (req: Request, res: Response, next: NextFunct
 
     // Attach additional metadata to request for controller use
     (req as any).minioFileInfo = {
-      actionId: minioFile.actionId,
+      id: minioFile.id,
       filePath: minioFile.filePath,
       etag: minioFile.etag,
       fileSize: minioFile.size,
@@ -148,7 +148,7 @@ export const cleanupFailedUpload = (req: Request, res: Response, next: NextFunct
         .info('Response failed, file cleanup may be needed', {
           statusCode: res.statusCode,
           filePath: fileInfo.filePath,
-          actionId: fileInfo.actionId,
+          id: fileInfo.id,
         });
 
       // Note: Actual cleanup should be handled by the FileUploadService

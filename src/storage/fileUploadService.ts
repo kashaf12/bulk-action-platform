@@ -18,7 +18,7 @@ import {
 
 export interface ProcessFileUploadRequest {
   accountId: string;
-  actionId: string;
+  id: string;
   filePath: string;
   fileName: string;
   fileSize: number;
@@ -50,7 +50,7 @@ export class FileUploadService {
 
     log.info('Processing file upload for bulk action', {
       accountId: request.accountId,
-      actionId: request.actionId,
+      id: request.id,
       filePath: request.filePath,
       fileSize: request.fileSize,
       entityType: request.entityType,
@@ -79,7 +79,7 @@ export class FileUploadService {
 
       // Create bulk action in database
       const bulkActionData: BulkActionCreateData = {
-        actionId: request.actionId,
+        id: request.id,
         accountId: request.accountId,
         entityType: request.entityType,
         actionType: request.actionType,
@@ -100,6 +100,7 @@ export class FileUploadService {
 
       const bulkAction = await this.bulkActionService.createBulkAction(
         {
+          id: request.id,
           accountId: request.accountId,
           entityType: request.entityType,
           actionType: request.actionType,
@@ -109,16 +110,16 @@ export class FileUploadService {
         traceId
       );
 
+      if (!bulkAction?.id) {
+        throw new DatabaseError('Failed to create bulk action in database');
+      }
+
       // Initialize statistics
-      await this.bulkActionStatService.initializeStats(
-        request.actionId,
-        estimatedEntities,
-        traceId
-      );
+      await this.bulkActionStatService.initializeStats(bulkAction!.id, estimatedEntities, traceId);
 
       // Create upload result
       const uploadResult: FileUploadResult = {
-        actionId: request.actionId,
+        id: request.id,
         filePath: request.filePath,
         fileName: request.fileName,
         fileSize: request.fileSize,
@@ -128,8 +129,8 @@ export class FileUploadService {
       };
 
       log.info('File upload processing completed successfully', {
-        actionId: request.actionId,
-        bulkActionId: bulkAction.actionId,
+        id: request.id,
+        bulkId: bulkAction.id,
         filePath: request.filePath,
         estimatedEntities,
       });
@@ -141,7 +142,7 @@ export class FileUploadService {
     } catch (error) {
       log.error('Failed to process file upload', {
         error: error instanceof Error ? error.message : String(error),
-        actionId: request.actionId,
+        id: request.id,
         filePath: request.filePath,
       });
 
@@ -165,16 +166,12 @@ export class FileUploadService {
   /**
    * Handle file upload failure cleanup
    */
-  public async handleUploadFailure(
-    filePath: string,
-    actionId: string,
-    traceId: string
-  ): Promise<void> {
+  public async handleUploadFailure(filePath: string, id: string, traceId: string): Promise<void> {
     const log = logger.withTrace(traceId);
 
     log.info('Handling upload failure cleanup', {
       filePath,
-      actionId,
+      id,
     });
 
     try {
@@ -186,13 +183,13 @@ export class FileUploadService {
 
       log.info('Upload failure cleanup completed', {
         filePath,
-        actionId,
+        id,
       });
     } catch (error) {
       log.error('Failed to cleanup after upload failure', {
         error: error instanceof Error ? error.message : String(error),
         filePath,
-        actionId,
+        id,
       });
       // Don't throw here as this is cleanup - log the error but continue
     }
@@ -312,7 +309,7 @@ export class FileUploadService {
    * Get upload progress (for potential future use with chunked uploads)
    */
   public async getUploadProgress(
-    actionId: string,
+    id: string,
     traceId: string
   ): Promise<{
     status: string;
@@ -323,7 +320,7 @@ export class FileUploadService {
 
     try {
       // Get bulk action status
-      const bulkAction = await this.bulkActionService.getBulkActionById(actionId, traceId);
+      const bulkAction = await this.bulkActionService.getBulkActionById(id, traceId);
 
       const progress =
         bulkAction.totalEntities > 0
@@ -338,7 +335,7 @@ export class FileUploadService {
     } catch (error) {
       log.error('Failed to get upload progress', {
         error: error instanceof Error ? error.message : String(error),
-        actionId,
+        id,
       });
       throw error;
     }

@@ -15,7 +15,7 @@ import { v4 as uuidv4 } from 'uuid';
 interface MinioFile extends Express.Multer.File {
   etag: string;
   filePath: string;
-  actionId: string;
+  id: string;
 }
 
 export class MinioStorageEngine implements StorageEngine {
@@ -47,12 +47,12 @@ export class MinioStorageEngine implements StorageEngine {
     const log = logger.withTrace(traceId);
 
     // Generate action ID for this upload
-    const actionId = uuidv4();
-    const filePath = PathGenerator.generateRawFilePath(accountId, actionId);
+    const id = uuidv4();
+    const filePath = PathGenerator.generateRawFilePath(accountId, id);
 
     log.info('Starting MinIO file upload', {
       accountId,
-      actionId,
+      id,
       originalName: file.originalname,
       mimetype: file.mimetype,
       filePath,
@@ -133,7 +133,7 @@ export class MinioStorageEngine implements StorageEngine {
       'original-filename': file.originalname,
       'content-type': file.mimetype,
       'account-id': accountId,
-      'action-id': actionId,
+      'action-id': id,
       'upload-timestamp': new Date().toISOString(),
       'trace-id': traceId,
     };
@@ -143,7 +143,7 @@ export class MinioStorageEngine implements StorageEngine {
       .uploadStream(filePath, passThrough, undefined, metadata, traceId)
       .then(result => {
         log.info('File uploaded to MinIO successfully', {
-          actionId,
+          id,
           filePath,
           uploadedBytes,
           etag: result.etag,
@@ -162,7 +162,7 @@ export class MinioStorageEngine implements StorageEngine {
           buffer: Buffer.alloc(0), // Empty buffer since we're streaming
           etag: result.etag,
           filePath: filePath,
-          actionId: actionId,
+          id,
         };
 
         callback(null, minioFile);
@@ -170,7 +170,7 @@ export class MinioStorageEngine implements StorageEngine {
       .catch(error => {
         log.error('MinIO upload failed', {
           error: error.message,
-          actionId,
+          id,
           filePath,
           uploadedBytes,
         });
@@ -181,7 +181,7 @@ export class MinioStorageEngine implements StorageEngine {
     file.stream.on('error', error => {
       log.error('File stream error during upload', {
         error: error.message,
-        actionId,
+        id,
         filePath,
       });
       callback(error);
@@ -190,7 +190,7 @@ export class MinioStorageEngine implements StorageEngine {
     passThrough.on('error', error => {
       log.error('PassThrough stream error during upload', {
         error: error.message,
-        actionId,
+        id,
         filePath,
       });
       callback(error);
@@ -212,7 +212,7 @@ export class MinioStorageEngine implements StorageEngine {
         .then(() => {
           logger.withTrace(traceId).info('File removed from MinIO', {
             filePath: minioFile.filePath,
-            actionId: minioFile.actionId,
+            id: minioFile.id,
           });
           callback(null);
         })

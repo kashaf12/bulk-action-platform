@@ -6,10 +6,10 @@
 
 - `POST /bulk-actions` - Create bulk action with CSV upload
 - `GET /bulk-actions` - List bulk actions with filtering
-- `GET /bulk-actions/{actionId}` - Get bulk action details
-- `GET /bulk-actions/{actionId}/stats` - Get bulk action statistics
-- `PUT /bulk-actions/{actionId}/cancel` - Cancel bulk action
-- `GET /bulk-actions/{actionId}/logs` - Get bulk action logs (future)
+- `GET /bulk-actions/{id}` - Get bulk action details
+- `GET /bulk-actions/{id}/stats` - Get bulk action statistics
+- `PUT /bulk-actions/{id}/cancel` - Cancel bulk action
+- `GET /bulk-actions/{id}/logs` - Get bulk action logs (future)
 
 ### Health Checks
 

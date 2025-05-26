@@ -6,11 +6,7 @@ import {
   validateMinioUpload,
   cleanupFailedUpload,
 } from '../middlewares/minioUploadMiddleware';
-import {
-  actionIdParamSchema,
-  bulkActionQuerySchema,
-  createBulkActionRequestSchema,
-} from '../../schemas';
+import { idParamSchema, bulkActionQuerySchema, createBulkActionRequestSchema } from '../../schemas';
 
 const router = Router();
 
@@ -55,7 +51,7 @@ router.get(
 );
 
 /**
- * GET /bulk-actions/{actionId}
+ * GET /bulk-actions/{id}
  * Get detailed information about a specific bulk action
  *
  * Middleware chain:
@@ -64,14 +60,14 @@ router.get(
  * 3. Controller - Handle business logic
  */
 router.get(
-  '/:actionId',
+  '/:id',
   authenticationMiddleware,
-  validationMiddleware(actionIdParamSchema, 'params'),
+  validationMiddleware(idParamSchema, 'params'),
   bulkActionController.getBulkActionById
 );
 
 /**
- * GET /bulk-actions/{actionId}/stats
+ * GET /bulk-actions/{id}/stats
  * Get statistics for a specific bulk action
  *
  * Middleware chain:
@@ -80,14 +76,14 @@ router.get(
  * 3. Controller - Handle business logic
  */
 router.get(
-  '/:actionId/stats',
+  '/:id/stats',
   authenticationMiddleware,
-  validationMiddleware(actionIdParamSchema, 'params'),
+  validationMiddleware(idParamSchema, 'params'),
   bulkActionController.getBulkActionStats
 );
 
 /**
- * PUT /bulk-actions/{actionId}/cancel
+ * PUT /bulk-actions/{id}/cancel
  * Cancel a pending or processing bulk action
  *
  * Middleware chain:
@@ -96,14 +92,14 @@ router.get(
  * 3. Controller - Handle business logic
  */
 router.put(
-  '/:actionId/cancel',
+  '/:id/cancel',
   authenticationMiddleware,
-  validationMiddleware(actionIdParamSchema, 'params'),
+  validationMiddleware(idParamSchema, 'params'),
   bulkActionController.cancelBulkAction
 );
 
 /**
- * GET /bulk-actions/{actionId}/download
+ * GET /bulk-actions/{id}/download
  * Get download URL for the original uploaded file
  *
  * Middleware chain:
@@ -112,9 +108,9 @@ router.put(
  * 3. Controller - Handle business logic
  */
 router.get(
-  '/:actionId/download',
+  '/:id/download',
   authenticationMiddleware,
-  validationMiddleware(actionIdParamSchema, 'params'),
+  validationMiddleware(idParamSchema, 'params'),
   bulkActionController.getFileDownloadUrl
 );
 

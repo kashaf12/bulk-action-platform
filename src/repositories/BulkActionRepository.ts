@@ -89,7 +89,7 @@ export class BulkActionRepository extends BaseRepository<IBulkAction> {
       // Fetch paginated data with proper ordering
       const dataQuery = `
         SELECT 
-          id, action_id, account_id, entity_type, action_type, status,
+          id, account_id, entity_type, action_type, status,
           total_entities, processed_entities, scheduled_at, started_at, 
           completed_at, configuration, error_message, created_at, updated_at
         FROM bulk_actions 
@@ -138,133 +138,133 @@ export class BulkActionRepository extends BaseRepository<IBulkAction> {
     }
   }
 
-  /**
-   * Find bulk action by action ID
-   */
-  public async findByActionId(actionId: string, traceId: string): Promise<IBulkAction | null> {
-    const log = logger.withTrace(traceId);
+  // /**
+  //  * Find bulk action by action ID
+  //  */
+  // public async findByActionId(actionId: string, traceId: string): Promise<IBulkAction | null> {
+  //   const log = logger.withTrace(traceId);
 
-    try {
-      const query = `
-        SELECT 
-          id, action_id, account_id, entity_type, action_type, status,
-          total_entities, processed_entities, scheduled_at, started_at, 
-          completed_at, configuration, error_message, created_at, updated_at
-        FROM bulk_actions 
-        WHERE action_id = $1
-      `;
+  //   try {
+  //     const query = `
+  //       SELECT
+  //         id, action_id, account_id, entity_type, action_type, status,
+  //         total_entities, processed_entities, scheduled_at, started_at,
+  //         completed_at, configuration, error_message, created_at, updated_at
+  //       FROM bulk_actions
+  //       WHERE action_id = $1
+  //     `;
 
-      const result = await database.query(query, [actionId], traceId);
+  //     const result = await database.query(query, [actionId], traceId);
 
-      if (result.rows.length === 0) {
-        log.debug('Bulk action not found by action ID', { actionId });
-        return null;
-      }
+  //     if (result.rows.length === 0) {
+  //       log.debug('Bulk action not found by action ID', { actionId });
+  //       return null;
+  //     }
 
-      const row = result.rows[0];
-      if (!row) {
-        log.warn('No rows returned for bulk action by action ID', { actionId });
-        return null;
-      }
+  //     const row = result.rows[0];
+  //     if (!row) {
+  //       log.warn('No rows returned for bulk action by action ID', { actionId });
+  //       return null;
+  //     }
 
-      const bulkAction = BulkAction.fromDbRow(row);
+  //     const bulkAction = BulkAction.fromDbRow(row);
 
-      log.debug('Bulk action found by action ID', {
-        actionId,
-        status: bulkAction.status,
-      });
+  //     log.debug('Bulk action found by action ID', {
+  //       actionId,
+  //       status: bulkAction.status,
+  //     });
 
-      return bulkAction;
-    } catch (error) {
-      log.error('Find bulk action by action ID failed', {
-        error: error instanceof Error ? error.message : String(error),
-        actionId,
-      });
-      throw new DatabaseError(`Find bulk action by action ID failed: ${error}`);
-    }
-  }
+  //     return bulkAction;
+  //   } catch (error) {
+  //     log.error('Find bulk action by action ID failed', {
+  //       error: error instanceof Error ? error.message : String(error),
+  //       actionId,
+  //     });
+  //     throw new DatabaseError(`Find bulk action by action ID failed: ${error}`);
+  //   }
+  // }
 
-  /**
-   * Update bulk action by action ID
-   */
-  public async updateByActionId(
-    actionId: string,
-    updates: Partial<IBulkAction>,
-    traceId: string
-  ): Promise<IBulkAction | null> {
-    const log = logger.withTrace(traceId);
+  // /**
+  //  * Update bulk action by action ID
+  //  */
+  // public async updateByActionId(
+  //   actionId: string,
+  //   updates: Partial<IBulkAction>,
+  //   traceId: string
+  // ): Promise<IBulkAction | null> {
+  //   const log = logger.withTrace(traceId);
 
-    try {
-      const mappings = BulkAction.getColumnMappings();
-      const setClauses: string[] = [];
-      const values: unknown[] = [];
-      let paramIndex = 1;
+  //   try {
+  //     const mappings = BulkAction.getColumnMappings();
+  //     const setClauses: string[] = [];
+  //     const values: unknown[] = [];
+  //     let paramIndex = 1;
 
-      // Build SET clause from updates
-      for (const [field, value] of Object.entries(updates)) {
-        const column = mappings[field];
-        if (column && value !== undefined) {
-          if (field === 'configuration') {
-            // Handle JSON serialization for configuration
-            setClauses.push(`${column} = $${paramIndex}`);
-            values.push(JSON.stringify(value));
-          } else {
-            setClauses.push(`${column} = $${paramIndex}`);
-            values.push(value);
-          }
-          paramIndex++;
-        }
-      }
+  //     // Build SET clause from updates
+  //     for (const [field, value] of Object.entries(updates)) {
+  //       const column = mappings[field];
+  //       if (column && value !== undefined) {
+  //         if (field === 'configuration') {
+  //           // Handle JSON serialization for configuration
+  //           setClauses.push(`${column} = $${paramIndex}`);
+  //           values.push(JSON.stringify(value));
+  //         } else {
+  //           setClauses.push(`${column} = $${paramIndex}`);
+  //           values.push(value);
+  //         }
+  //         paramIndex++;
+  //       }
+  //     }
 
-      if (setClauses.length === 0) {
-        throw new Error('No valid fields to update');
-      }
+  //     if (setClauses.length === 0) {
+  //       throw new Error('No valid fields to update');
+  //     }
 
-      // Add updated_at timestamp
-      setClauses.push(`updated_at = NOW()`);
-      values.push(actionId);
+  //     // Add updated_at timestamp
+  //     setClauses.push(`updated_at = NOW()`);
+  //     values.push(actionId);
 
-      const query = `
-        UPDATE bulk_actions
-        SET ${setClauses.join(', ')}
-        WHERE action_id = $${paramIndex}
-        RETURNING 
-          id, action_id, account_id, entity_type, action_type, status,
-          total_entities, processed_entities, scheduled_at, started_at, 
-          completed_at, configuration, error_message, created_at, updated_at
-      `;
+  //     const query = `
+  //       UPDATE bulk_actions
+  //       SET ${setClauses.join(', ')}
+  //       WHERE action_id = $${paramIndex}
+  //       RETURNING
+  //         id, action_id, account_id, entity_type, action_type, status,
+  //         total_entities, processed_entities, scheduled_at, started_at,
+  //         completed_at, configuration, error_message, created_at, updated_at
+  //     `;
 
-      const result = await database.query(query, values, traceId);
+  //     const result = await database.query(query, values, traceId);
 
-      if (result.rows.length === 0) {
-        log.warn('Bulk action not found for update', { actionId });
-        return null;
-      }
+  //     if (result.rows.length === 0) {
+  //       log.warn('Bulk action not found for update', { actionId });
+  //       return null;
+  //     }
 
-      const row = result.rows[0];
-      if (!row) {
-        log.warn('No rows returned for bulk action update', { actionId });
-        return null;
-      }
+  //     const row = result.rows[0];
+  //     if (!row) {
+  //       log.warn('No rows returned for bulk action update', { actionId });
+  //       return null;
+  //     }
 
-      const updatedBulkAction = BulkAction.fromDbRow(row);
+  //     const updatedBulkAction = BulkAction.fromDbRow(row);
 
-      log.info('Bulk action updated successfully', {
-        actionId,
-        updatedFields: Object.keys(updates),
-        newStatus: updatedBulkAction.status,
-      });
+  //     log.info('Bulk action updated successfully', {
+  //       actionId,
+  //       updatedFields: Object.keys(updates),
+  //       newStatus: updatedBulkAction.status,
+  //     });
 
-      return updatedBulkAction;
-    } catch (error) {
-      log.error('Update bulk action by action ID failed', {
-        error: error instanceof Error ? error.message : String(error),
-        actionId,
-        updates,
-      });
-      throw new DatabaseError(`Update bulk action failed: ${error}`);
-    }
-  }
+  //     return updatedBulkAction;
+  //   } catch (error) {
+  //     log.error('Update bulk action by action ID failed', {
+  //       error: error instanceof Error ? error.message : String(error),
+  //       actionId,
+  //       updates,
+  //     });
+  //     throw new DatabaseError(`Update bulk action failed: ${error}`);
+  //   }
+  // }
 
   /**
    * Get bulk actions that are ready to process (scheduled time has passed)
@@ -558,7 +558,7 @@ export class BulkActionRepository extends BaseRepository<IBulkAction> {
    * Update progress for multiple bulk actions atomically
    */
   public async updateProgress(
-    updates: Array<{ actionId: string; processedEntities: number; status?: BulkActionStatus }>,
+    updates: Array<{ id: string; processedEntities: number; status?: BulkActionStatus }>,
     traceId: string
   ): Promise<void> {
     const log = logger.withTrace(traceId);
@@ -573,7 +573,7 @@ export class BulkActionRepository extends BaseRepository<IBulkAction> {
       try {
         await client.query('BEGIN');
 
-        for (const { actionId, processedEntities, status } of updates) {
+        for (const { id, processedEntities, status } of updates) {
           let query: string;
           let values: unknown[];
 
@@ -583,14 +583,14 @@ export class BulkActionRepository extends BaseRepository<IBulkAction> {
               SET processed_entities = $1, status = $2, updated_at = NOW()
               WHERE action_id = $3
             `;
-            values = [processedEntities, status, actionId];
+            values = [processedEntities, status, id];
           } else {
             query = `
               UPDATE bulk_actions 
               SET processed_entities = $1, updated_at = NOW()
               WHERE action_id = $2
             `;
-            values = [processedEntities, actionId];
+            values = [processedEntities, id];
           }
 
           await client.query(query, values);

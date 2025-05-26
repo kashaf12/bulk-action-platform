@@ -3,7 +3,7 @@
  */
 
 export interface FileUploadResult {
-  actionId: string;
+  id: string;
   filePath: string;
   fileName: string;
   fileSize: number;
@@ -14,7 +14,7 @@ export interface FileUploadResult {
 
 export interface MinioUploadOptions {
   accountId: string;
-  actionId: string;
+  id: string;
   originalFileName: string;
   contentType: string;
   metadata?: Record<string, string>;

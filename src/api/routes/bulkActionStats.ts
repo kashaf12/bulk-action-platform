@@ -6,7 +6,7 @@
 import { Router } from 'express';
 import { bulkActionStatController } from '../controllers';
 import { authenticationMiddleware, validationMiddleware } from '../middlewares';
-import { actionIdParamSchema } from '../../schemas';
+import { idParamSchema } from '../../schemas';
 import { z } from 'zod';
 
 const router = Router();
@@ -34,7 +34,7 @@ const incrementStatsSchema = z
   );
 
 /**
- * GET /bulk-actions/{actionId}/stats
+ * GET /bulk-actions/{id}/stats
  * Get statistics for a specific bulk action
  *
  * Middleware chain:
@@ -43,14 +43,14 @@ const incrementStatsSchema = z
  * 3. Controller - Handle business logic
  */
 router.get(
-  '/:actionId/stats',
+  '/:id/stats',
   authenticationMiddleware,
-  validationMiddleware(actionIdParamSchema, 'params'),
+  validationMiddleware(idParamSchema, 'params'),
   bulkActionStatController.getBulkActionStats
 );
 
 /**
- * POST /bulk-actions/{actionId}/stats/initialize
+ * POST /bulk-actions/{id}/stats/initialize
  * Initialize empty statistics for a bulk action (internal use)
  *
  * Middleware chain:
@@ -60,15 +60,15 @@ router.get(
  * 4. Controller - Handle business logic
  */
 router.post(
-  '/:actionId/stats/initialize',
+  '/:id/stats/initialize',
   authenticationMiddleware,
-  validationMiddleware(actionIdParamSchema, 'params'),
+  validationMiddleware(idParamSchema, 'params'),
   validationMiddleware(initializeStatsSchema, 'body'),
   bulkActionStatController.initializeBulkActionStats
 );
 
 /**
- * PUT /bulk-actions/{actionId}/stats/increment
+ * PUT /bulk-actions/{id}/stats/increment
  * Increment statistics counters (for workers)
  *
  * Middleware chain:
@@ -78,15 +78,15 @@ router.post(
  * 4. Controller - Handle business logic
  */
 router.put(
-  '/:actionId/stats/increment',
+  '/:id/stats/increment',
   authenticationMiddleware,
-  validationMiddleware(actionIdParamSchema, 'params'),
+  validationMiddleware(idParamSchema, 'params'),
   validationMiddleware(incrementStatsSchema, 'body'),
   bulkActionStatController.incrementBulkActionStats
 );
 
 /**
- * GET /bulk-actions/{actionId}/stats/validate
+ * GET /bulk-actions/{id}/stats/validate
  * Validate statistics consistency
  *
  * Middleware chain:
@@ -95,14 +95,14 @@ router.put(
  * 3. Controller - Handle business logic
  */
 router.get(
-  '/:actionId/stats/validate',
+  '/:id/stats/validate',
   authenticationMiddleware,
-  validationMiddleware(actionIdParamSchema, 'params'),
+  validationMiddleware(idParamSchema, 'params'),
   bulkActionStatController.validateBulkActionStats
 );
 
 /**
- * DELETE /bulk-actions/{actionId}/stats
+ * DELETE /bulk-actions/{id}/stats
  * Delete statistics for a bulk action (cleanup)
  *
  * Middleware chain:
@@ -111,14 +111,14 @@ router.get(
  * 3. Controller - Handle business logic
  */
 router.delete(
-  '/:actionId/stats',
+  '/:id/stats',
   authenticationMiddleware,
-  validationMiddleware(actionIdParamSchema, 'params'),
+  validationMiddleware(idParamSchema, 'params'),
   bulkActionStatController.deleteBulkActionStats
 );
 
 /**
- * GET /bulk-actions/{actionId}/stats/exists
+ * GET /bulk-actions/{id}/stats/exists
  * Check if statistics exist for a bulk action
  *
  * Middleware chain:
@@ -127,9 +127,9 @@ router.delete(
  * 3. Controller - Handle business logic
  */
 router.get(
-  '/:actionId/stats/exists',
+  '/:id/stats/exists',
   authenticationMiddleware,
-  validationMiddleware(actionIdParamSchema, 'params'),
+  validationMiddleware(idParamSchema, 'params'),
   bulkActionStatController.checkBulkActionStatsExist
 );
 
