@@ -10,7 +10,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --only=production
 
 # Copy source code
-COPY . .
+COPY src/ ./src/
 
 # Build TypeScript
 RUN npm run build

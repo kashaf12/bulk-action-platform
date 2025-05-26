@@ -10,3 +10,4 @@ db
 storage
 pgadmin
 redis
+seed_data
