@@ -386,7 +386,6 @@ export class CSVStreamReader {
             rawLine: Object.values(data).join(this.options.delimiter), // Approximate reconstruction
             byteOffset,
           };
-
           // Process row
           await onRow(csvRow);
           this.stats.validRows++;

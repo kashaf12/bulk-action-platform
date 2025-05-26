@@ -455,11 +455,9 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
   private mapRowToContact(rowData: Record<string, string>): any {
     return {
       email: rowData.email?.trim()?.toLowerCase(),
-      name: rowData.name?.trim() || rowData.full_name?.trim(),
-      phone: rowData.phone?.trim() || rowData.phone_number?.trim(),
-      company: rowData.company?.trim() || rowData.company_name?.trim(),
+      name: rowData.name?.trim(),
       age: rowData.age ? parseInt(rowData.age) : undefined,
-      status: rowData.status?.trim()?.toLowerCase() || 'active',
+      id: rowData.id?.trim(),
     };
   }
 
