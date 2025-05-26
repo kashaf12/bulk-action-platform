@@ -1,0 +1,71 @@
+config:
+  target: 'http://localhost:3000'
+  phases:
+    - duration: 60 # Ramp up to 100 RPS over 1 minute
+      arrivalRate: 0
+      rampTo: 100
+      name: Warm-up
+    - duration: 60 # Hold steady at 100 RPS
+      arrivalRate: 100
+      name: Steady Load
+    - duration: 60 # Push to ~167 RPS (~10K RPM)
+      arrivalRate: 100
+      rampTo: 167
+      name: Ramp to Max
+    - duration: 60 # Maintain peak load of ~167 RPS
+      arrivalRate: 167
+      name: Stress Test
+
+  plugins:
+    ensure:
+      thresholds:
+        - http.response_time.p99: 500 # 99% responses under 500ms
+        - http.response_time.p95: 300 # 95% responses under 300ms
+        - http.errors: 0 # No HTTP-level errors allowed
+    apdex:
+      threshold: 300 # Apdex T value = 300ms
+    metrics-by-endpoint: {}
+
+  environments:
+    dev:
+      target: 'http://localhost:3000'
+      variables:
+        accountId: 'integration-test'
+        actionId: '146dee0a-0da3-43d7-8fbf-7881f9f00e37'
+
+scenarios:
+  - name: Health Check
+    flow:
+      - get:
+          url: '/'
+      - get:
+          url: '/health'
+      - get:
+          url: '/docs'
+
+  - name: Bulk Actions Read
+    flow:
+      - get:
+          url: '/bulk-actions'
+          headers:
+            account-id: 'integration-test'
+      - get:
+          url: '/bulk-actions/146dee0a-0da3-43d7-8fbf-7881f9f00e37'
+          headers:
+            account-id: 'integration-test'
+      - get:
+          url: '/bulk-actions/146dee0a-0da3-43d7-8fbf-7881f9f00e37/stats'
+          headers:
+            account-id: 'integration-test'
+
+  # - name: Bulk Actions Upload
+  #   flow:
+  #     - post:
+  #         url: '/bulk-actions'
+  #         headers:
+  #           account-id: 'integration-test'
+  #           Content-Type: multipart/form-data
+  #         formData:
+  #           file: './sample.csv' # Ensure this file exists at runtime
+  #           entityType: 'contact'
+  #           actionType: '146dee0a-0da3-43d7-8fbf-7881f9f00e37'
