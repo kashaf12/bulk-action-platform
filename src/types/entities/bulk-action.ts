@@ -14,6 +14,8 @@ export type BulkActionStatus =
 export type BulkActionType = 'bulk_update' | 'bulk_delete' | 'bulk_create';
 export type EntityType = 'contact' | 'company' | 'lead' | 'opportunity' | 'task';
 
+export type ConflictStrategy = 'skip' | 'error' | 'create';
+
 export interface BulkActionConfiguration {
   batchSize?: number;
   deduplicate?: boolean;

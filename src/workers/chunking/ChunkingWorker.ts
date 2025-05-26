@@ -460,7 +460,7 @@ export class ChunkingWorker extends EventEmitter {
   }
 
   /**
-   * Enqueue processing jobs for each chunk
+   * Enqueue processing jobs for each chunk with partition routing
    */
   private async enqueueProcessingJobs(
     jobData: ChunkingJobData,
@@ -470,8 +470,20 @@ export class ChunkingWorker extends EventEmitter {
     const jobIds: string[] = [];
 
     try {
+      // Get partition count from environment
+      const partitionCount = parseInt(process.env.PROCESSING_WORKER_COUNT || '5');
+
+      log.info('Enqueuing processing jobs with partition routing', {
+        actionId: jobData.actionId,
+        totalChunks: chunkingResult.chunkMetadata.length,
+        partitionCount,
+      });
+
       for (let i = 0; i < chunkingResult.chunkMetadata.length; i++) {
         const chunk = chunkingResult.chunkMetadata[i];
+
+        // Calculate partition using consistent hashing on chunk hash range
+        const partitionId = this.calculatePartitionForChunk(chunk, partitionCount);
 
         const processingJobData = {
           traceId: jobData.traceId,
@@ -495,12 +507,14 @@ export class ChunkingWorker extends EventEmitter {
           actionType: jobData.actionType,
           configuration: jobData.configuration,
 
-          // Hash range
+          // Hash range (for consistent hashing)
           hashRangeStart: chunk.hashRangeStart,
           hashRangeEnd: chunk.hashRangeEnd,
         };
 
-        const processingJob = await this.processingQueue.addProcessingJob(
+        // Enqueue job to specific partition
+        const processingJob = await this.processingQueue.addProcessingJobToPartition(
+          partitionId,
           processingJobData,
           {
             priority: 5, // Lower priority than chunking
@@ -511,17 +525,28 @@ export class ChunkingWorker extends EventEmitter {
         );
 
         jobIds.push(processingJob.id || '');
+
+        log.debug('Processing job enqueued to partition', {
+          chunkId: chunk.chunkId,
+          chunkIndex: chunk.chunkIndex,
+          partitionId,
+          jobId: processingJob.id,
+          hashRange: `${chunk.hashRangeStart}-${chunk.hashRangeEnd}`,
+        });
       }
 
-      log.info('Processing jobs enqueued', {
+      log.info('Processing jobs enqueued with partition routing', {
         actionId: jobData.actionId,
         totalJobs: jobIds.length,
-        jobIds: jobIds.slice(0, 5), // Log first 5 job IDs
+        partitionDistribution: this.getPartitionDistribution(
+          chunkingResult.chunkMetadata,
+          partitionCount
+        ),
       });
 
       return jobIds;
     } catch (error) {
-      log.error('Failed to enqueue processing jobs', {
+      log.error('Failed to enqueue processing jobs with partitioning', {
         error: error instanceof Error ? error.message : String(error),
         actionId: jobData.actionId,
         enqueuedJobs: jobIds.length,
@@ -530,6 +555,41 @@ export class ChunkingWorker extends EventEmitter {
       // Don't throw - partial success is still valuable
       return jobIds;
     }
+  }
+
+  /**
+   * Calculate partition for a chunk using consistent hashing
+   */
+  private calculatePartitionForChunk(chunk: any, partitionCount: number): number {
+    const hashValue = chunk.hashRangeStart;
+
+    const hashNum = parseInt(hashValue.substring(0, 8), 16);
+    const partitionId = hashNum % partitionCount;
+
+    return partitionId;
+  }
+
+  /**
+   * Get partition distribution for logging
+   */
+  private getPartitionDistribution(
+    chunkMetadata: any[],
+    partitionCount: number
+  ): Record<number, number> {
+    const distribution: Record<number, number> = {};
+
+    // Initialize all partitions with 0
+    for (let i = 0; i < partitionCount; i++) {
+      distribution[i] = 0;
+    }
+
+    // Count chunks per partition
+    for (const chunk of chunkMetadata) {
+      const partitionId = this.calculatePartitionForChunk(chunk, partitionCount);
+      distribution[partitionId] = (distribution[partitionId] ?? 0) + 1;
+    }
+
+    return distribution;
   }
 
   /**

@@ -1,6 +1,6 @@
 /**
- * Processing Queue Implementation
- * Manages the BullMQ queue for processing jobs (individual chunk processing)
+ * Processing Queue Implementation with Partition Support
+ * Manages multiple BullMQ queues for processing jobs with partition-based routing
  */
 
 import { Queue, QueueEvents, Job, JobsOptions, RedisOptions } from 'bullmq';
@@ -14,35 +14,28 @@ import {
 import queueConfigManager from './config/queueConfig';
 import { logger } from '../utils/logger';
 import { EventEmitter } from 'events';
+import configManager from '../config/app';
 
 export class ProcessingQueue extends EventEmitter {
-  private queue: Queue<ProcessingJobData, ProcessingJobResult>;
-  private queueEvents: QueueEvents;
+  private queues: Map<number, Queue<ProcessingJobData, ProcessingJobResult>> = new Map();
+  private queueEvents: Map<number, QueueEvents> = new Map();
   private isInitialized = false;
   private healthMetrics: Partial<QueueHealth> = {};
+  private partitionCount: number;
 
   constructor() {
     super();
 
-    const config = queueConfigManager.getProcessingQueueConfig();
+    // Get partition count from environment
+    this.partitionCount = parseInt(process.env.PROCESSING_WORKER_COUNT || '5');
 
-    // Initialize BullMQ queue
-    this.queue = new Queue<ProcessingJobData, ProcessingJobResult>(config.name, {
-      connection: config.connection,
-      defaultJobOptions: config.defaultJobOptions,
+    logger.info('Initializing ProcessingQueue with partitions', {
+      partitionCount: this.partitionCount,
     });
-
-    // Initialize queue events for monitoring
-    this.queueEvents = new QueueEvents(config.name, {
-      connection: config.connection,
-    });
-
-    // this.setupEventListeners();
-    this.startHealthMonitoring();
   }
 
   /**
-   * Initialize the queue and validate connections
+   * Initialize all partition queues and validate connections
    */
   public async initialize(): Promise<void> {
     if (this.isInitialized) {
@@ -56,32 +49,60 @@ export class ProcessingQueue extends EventEmitter {
         throw new Error('Redis connection validation failed');
       }
 
-      // Wait for queue to be ready
-      await this.queue.waitUntilReady();
-      await this.queueEvents.waitUntilReady();
+      const config = queueConfigManager.getProcessingQueueConfig();
+
+      // Initialize queue for each partition
+      for (let partitionId = 0; partitionId < this.partitionCount; partitionId++) {
+        const queueName = `bulk-action-processing-partition-${partitionId}`;
+
+        // Create queue instance
+        const queue = new Queue<ProcessingJobData, ProcessingJobResult>(queueName, {
+          connection: config.connection,
+          defaultJobOptions: config.defaultJobOptions,
+        });
+
+        // Create queue events instance
+        const queueEvents = new QueueEvents(queueName, {
+          connection: config.connection,
+        });
+
+        // Wait for queue to be ready
+        await queue.waitUntilReady();
+        await queueEvents.waitUntilReady();
+
+        this.queues.set(partitionId, queue);
+        this.queueEvents.set(partitionId, queueEvents);
+
+        logger.debug('Partition queue initialized', {
+          partitionId,
+          queueName,
+        });
+      }
 
       this.isInitialized = true;
 
-      logger.info('Processing queue initialized successfully', {
-        queueName: this.queue.name,
+      logger.info('All processing partition queues initialized successfully', {
+        partitionCount: this.partitionCount,
+        queueNames: Array.from(this.queues.values()).map(q => q.name),
         redisHost: (queueConfigManager.getConnectionOptions() as RedisOptions).host,
       });
 
       // Emit initialization event
       this.emit('initialized');
     } catch (error) {
-      logger.error('Failed to initialize processing queue', {
+      logger.error('Failed to initialize processing queues', {
         error: error instanceof Error ? error.message : String(error),
-        queueName: this.queue.name,
+        partitionCount: this.partitionCount,
       });
       throw error;
     }
   }
 
   /**
-   * Add a processing job to the queue
+   * Add a processing job to specific partition queue
    */
-  public async addProcessingJob(
+  public async addProcessingJobToPartition(
+    partitionId: number,
     jobData: ProcessingJobData,
     options: JobsOptions = {},
     traceId: string
@@ -92,12 +113,23 @@ export class ProcessingQueue extends EventEmitter {
       await this.initialize();
     }
 
+    if (partitionId < 0 || partitionId >= this.partitionCount) {
+      throw new Error(
+        `Invalid partition ID: ${partitionId}. Must be between 0 and ${this.partitionCount - 1}`
+      );
+    }
+
+    const queue = this.queues.get(partitionId);
+    if (!queue) {
+      throw new Error(`Queue not found for partition: ${partitionId}`);
+    }
+
     try {
       // Validate job data
       this.validateJobData(jobData);
 
       // Generate job ID for tracking
-      const jobId = `processing-${jobData.actionId}-${jobData.chunkId}-${Date.now()}`;
+      const jobId = `processing-${jobData.actionId}-${jobData.chunkId}-p${partitionId}-${Date.now()}`;
 
       // Merge with default options
       const jobOptions: JobsOptions = {
@@ -106,51 +138,59 @@ export class ProcessingQueue extends EventEmitter {
         backoff: { type: 'exponential' },
         removeOnComplete: 100,
         removeOnFail: 50,
-        // timeout: 300000, // 5 minutes timeout
         jobId,
         ...options,
       };
 
-      log.info('Adding processing job to queue', {
+      log.info('Adding processing job to partition queue', {
         actionId: jobData.actionId,
         chunkId: jobData.chunkId,
         chunkPath: jobData.chunkPath,
         recordCount: jobData.recordCount,
         chunkIndex: jobData.chunkIndex,
         totalChunks: jobData.totalChunks,
+        partitionId,
+        queueName: queue.name,
         jobId,
       });
 
-      // Add job to queue
-      const job = await this.queue.add('process-chunk', jobData, jobOptions);
+      // Add job to specific partition queue
+      const job = await queue.add('process-chunk', jobData, jobOptions);
 
-      log.info('Processing job added successfully', {
+      log.info('Processing job added to partition successfully', {
         actionId: jobData.actionId,
         chunkId: jobData.chunkId,
         jobId: job.id,
+        partitionId,
+        queueName: queue.name,
         priority: jobOptions.priority,
         chunkIndex: jobData.chunkIndex,
       });
 
       // Emit job added event
-      this.emitJobEvent('started', job, traceId);
+      this.emitJobEvent('started', job, partitionId, traceId);
 
       return job;
     } catch (error) {
-      log.error('Failed to add processing job', {
+      log.error('Failed to add processing job to partition', {
         error: error instanceof Error ? error.message : String(error),
         actionId: jobData.actionId,
         chunkId: jobData.chunkId,
+        partitionId,
       });
       throw error;
     }
   }
 
   /**
-   * Add multiple processing jobs (batch)
+   * Add multiple processing jobs with automatic partition routing
    */
-  public async addProcessingJobs(
-    jobsData: Array<{ data: ProcessingJobData; options?: JobsOptions }>,
+  public async addProcessingJobsWithPartitioning(
+    jobsData: Array<{
+      data: ProcessingJobData;
+      partitionId: number;
+      options?: JobsOptions;
+    }>,
     traceId: string
   ): Promise<Job<ProcessingJobData, ProcessingJobResult>[]> {
     const log = logger.withTrace(traceId);
@@ -164,54 +204,48 @@ export class ProcessingQueue extends EventEmitter {
     }
 
     try {
-      log.info('Adding batch processing jobs to queue', {
+      log.info('Adding batch processing jobs with partitioning', {
         jobCount: jobsData.length,
         actionIds: [...new Set(jobsData.map(j => j.data.actionId))],
+        partitions: [...new Set(jobsData.map(j => j.partitionId))],
       });
 
-      // Prepare bulk job data
-      const bulkJobs = jobsData.map(({ data, options = {} }, index) => {
-        this.validateJobData(data);
+      // Group jobs by partition for efficient bulk operations
+      const jobsByPartition = new Map<
+        number,
+        Array<{ data: ProcessingJobData; options?: JobsOptions }>
+      >();
 
-        const jobId = `processing-${data.actionId}-${data.chunkId}-${Date.now()}-${index}`;
-        const jobOptions: JobsOptions = {
-          priority: 5,
-          attempts: 5,
-          backoff: { type: 'exponential' },
-          removeOnComplete: 100,
-          removeOnFail: 50,
-          // timeout: 300000,
-
-          jobId,
-          ...options,
-        };
-
-        return {
-          name: 'process-chunk',
-          data,
-          opts: jobOptions,
-        };
-      });
-
-      // Add jobs in bulk
-      const jobs = await this.queue.addBulk(bulkJobs);
-
-      log.info('Batch processing jobs added successfully', {
-        jobCount: jobs.length,
-        successfulJobs: jobs.filter(j => j.id).length,
-        failedJobs: jobs.filter(j => !j.id).length,
-      });
-
-      // Emit events for successful jobs
-      jobs.forEach(job => {
-        if (job.id) {
-          this.emitJobEvent('started', job as any, traceId);
+      for (const jobEntry of jobsData) {
+        if (!jobsByPartition.has(jobEntry.partitionId)) {
+          jobsByPartition.set(jobEntry.partitionId, []);
         }
+        jobsByPartition.get(jobEntry.partitionId)!.push({
+          data: jobEntry.data,
+          options: jobEntry.options,
+        });
+      }
+
+      // Add jobs to each partition in parallel
+      const addPromises: Promise<Job<ProcessingJobData, ProcessingJobResult>[]>[] = [];
+
+      for (const [partitionId, partitionJobs] of jobsByPartition) {
+        const promise = this.addJobsToSinglePartition(partitionId, partitionJobs, traceId);
+        addPromises.push(promise);
+      }
+
+      const results = await Promise.all(addPromises);
+      const allJobs = results.flat();
+
+      log.info('Batch processing jobs added with partitioning successfully', {
+        totalJobs: allJobs.length,
+        partitionsUsed: jobsByPartition.size,
+        successfulJobs: allJobs.filter(j => j.id).length,
       });
 
-      return jobs as Job<ProcessingJobData, ProcessingJobResult>[];
+      return allJobs;
     } catch (error) {
-      log.error('Failed to add batch processing jobs', {
+      log.error('Failed to add batch processing jobs with partitioning', {
         error: error instanceof Error ? error.message : String(error),
         jobCount: jobsData.length,
       });
@@ -220,18 +254,57 @@ export class ProcessingQueue extends EventEmitter {
   }
 
   /**
-   * Get job by ID
+   * Get queue instance for specific partition (for worker binding)
    */
-  public async getJob(
+  public getPartitionQueue(partitionId: number): Queue<ProcessingJobData, ProcessingJobResult> {
+    if (partitionId < 0 || partitionId >= this.partitionCount) {
+      throw new Error(
+        `Invalid partition ID: ${partitionId}. Must be between 0 and ${this.partitionCount - 1}`
+      );
+    }
+
+    const queue = this.queues.get(partitionId);
+    if (!queue) {
+      throw new Error(`Queue not found for partition: ${partitionId}`);
+    }
+
+    return queue;
+  }
+
+  /**
+   * Get queue events instance for specific partition
+   */
+  public getPartitionQueueEvents(partitionId: number): QueueEvents {
+    if (partitionId < 0 || partitionId >= this.partitionCount) {
+      throw new Error(
+        `Invalid partition ID: ${partitionId}. Must be between 0 and ${this.partitionCount - 1}`
+      );
+    }
+
+    const queueEvents = this.queueEvents.get(partitionId);
+    if (!queueEvents) {
+      throw new Error(`Queue events not found for partition: ${partitionId}`);
+    }
+
+    return queueEvents;
+  }
+
+  /**
+   * Get job by ID from specific partition
+   */
+  public async getJobFromPartition(
+    partitionId: number,
     jobId: string,
     traceId: string
   ): Promise<Job<ProcessingJobData, ProcessingJobResult> | undefined> {
     try {
-      const job = await this.queue.getJob(jobId);
+      const queue = this.getPartitionQueue(partitionId);
+      const job = await queue.getJob(jobId);
 
       if (job) {
-        logger.withTrace(traceId).debug('Retrieved processing job', {
+        logger.withTrace(traceId).debug('Retrieved processing job from partition', {
           jobId,
+          partitionId,
           actionId: job.data.actionId,
           chunkId: job.data.chunkId,
           status: await job.getState(),
@@ -240,16 +313,17 @@ export class ProcessingQueue extends EventEmitter {
 
       return job;
     } catch (error) {
-      logger.withTrace(traceId).error('Failed to get processing job', {
+      logger.withTrace(traceId).error('Failed to get processing job from partition', {
         error: error instanceof Error ? error.message : String(error),
         jobId,
+        partitionId,
       });
       throw error;
     }
   }
 
   /**
-   * Get jobs by action ID
+   * Get jobs by action ID across all partitions
    */
   public async getJobsByActionId(
     actionId: string,
@@ -258,28 +332,34 @@ export class ProcessingQueue extends EventEmitter {
     const log = logger.withTrace(traceId);
 
     try {
-      // Get jobs from different states
-      const [waiting, active, completed, failed] = await Promise.all([
-        this.queue.getWaiting(),
-        this.queue.getActive(),
-        this.queue.getCompleted(),
-        this.queue.getFailed(),
-      ]);
+      const allJobs: Job<ProcessingJobData, ProcessingJobResult>[] = [];
 
-      // Filter jobs by action ID
-      const allJobs = [...waiting, ...active, ...completed, ...failed];
-      const actionJobs = allJobs.filter(job => job.data.actionId === actionId);
+      // Search across all partitions
+      for (let partitionId = 0; partitionId < this.partitionCount; partitionId++) {
+        const queue = this.queues.get(partitionId)!;
 
-      log.debug('Retrieved processing jobs by action ID', {
+        // Get jobs from different states
+        const [waiting, active, completed, failed] = await Promise.all([
+          queue.getWaiting(),
+          queue.getActive(),
+          queue.getCompleted(),
+          queue.getFailed(),
+        ]);
+
+        // Filter jobs by action ID
+        const partitionJobs = [...waiting, ...active, ...completed, ...failed];
+        const actionJobs = partitionJobs.filter(job => job.data.actionId === actionId);
+
+        allJobs.push(...(actionJobs as Job<ProcessingJobData, ProcessingJobResult>[]));
+      }
+
+      log.debug('Retrieved processing jobs by action ID across partitions', {
         actionId,
-        totalJobs: actionJobs.length,
-        waiting: actionJobs.filter(j => waiting.includes(j)).length,
-        active: actionJobs.filter(j => active.includes(j)).length,
-        completed: actionJobs.filter(j => completed.includes(j)).length,
-        failed: actionJobs.filter(j => failed.includes(j)).length,
+        totalJobs: allJobs.length,
+        partitionsSearched: this.partitionCount,
       });
 
-      return actionJobs as Job<ProcessingJobData, ProcessingJobResult>[];
+      return allJobs;
     } catch (error) {
       log.error('Failed to get processing jobs by action ID', {
         error: error instanceof Error ? error.message : String(error),
@@ -290,70 +370,42 @@ export class ProcessingQueue extends EventEmitter {
   }
 
   /**
-   * Cancel a job
-   */
-  public async cancelJob(jobId: string, traceId: string): Promise<boolean> {
-    const log = logger.withTrace(traceId);
-
-    try {
-      const job = await this.queue.getJob(jobId);
-
-      if (!job) {
-        log.warn('Job not found for cancellation', { jobId });
-        return false;
-      }
-
-      // Remove the job
-      await job.remove();
-
-      log.info('Processing job cancelled successfully', {
-        jobId,
-        actionId: job.data.actionId,
-        chunkId: job.data.chunkId,
-      });
-
-      return true;
-    } catch (error) {
-      log.error('Failed to cancel processing job', {
-        error: error instanceof Error ? error.message : String(error),
-        jobId,
-      });
-      return false;
-    }
-  }
-
-  /**
-   * Cancel all jobs for an action
+   * Cancel all jobs for an action across all partitions
    */
   public async cancelJobsByActionId(actionId: string, traceId: string): Promise<number> {
     const log = logger.withTrace(traceId);
 
     try {
-      const jobs = await this.getJobsByActionId(actionId, traceId);
-      let cancelledCount = 0;
+      let totalCancelled = 0;
 
-      for (const job of jobs) {
-        try {
-          const state = await job.getState();
-          if (['waiting', 'delayed'].includes(state)) {
-            await job.remove();
-            cancelledCount++;
+      // Cancel jobs in each partition
+      for (let partitionId = 0; partitionId < this.partitionCount; partitionId++) {
+        const jobs = await this.getJobsByActionIdInPartition(actionId, partitionId, traceId);
+
+        for (const job of jobs) {
+          try {
+            const state = await job.getState();
+            if (['waiting', 'delayed'].includes(state)) {
+              await job.remove();
+              totalCancelled++;
+            }
+          } catch (error) {
+            log.warn('Failed to cancel individual job', {
+              jobId: job.id,
+              partitionId,
+              error: error instanceof Error ? error.message : String(error),
+            });
           }
-        } catch (error) {
-          log.warn('Failed to cancel individual job', {
-            jobId: job.id,
-            error: error instanceof Error ? error.message : String(error),
-          });
         }
       }
 
-      log.info('Processing jobs cancelled by action ID', {
+      log.info('Processing jobs cancelled by action ID across partitions', {
         actionId,
-        totalJobs: jobs.length,
-        cancelledJobs: cancelledCount,
+        cancelledJobs: totalCancelled,
+        partitionsSearched: this.partitionCount,
       });
 
-      return cancelledCount;
+      return totalCancelled;
     } catch (error) {
       log.error('Failed to cancel processing jobs by action ID', {
         error: error instanceof Error ? error.message : String(error),
@@ -364,37 +416,55 @@ export class ProcessingQueue extends EventEmitter {
   }
 
   /**
-   * Get queue health metrics
+   * Get aggregated health metrics across all partitions
    */
   public async getHealth(): Promise<QueueHealth> {
     try {
-      const [waiting, active, completed, failed, delayed, stalled] = await Promise.all([
-        this.queue.getWaiting(),
-        this.queue.getActive(),
-        this.queue.getCompleted(),
-        this.queue.getFailed(),
-        this.queue.getDelayed(),
-        this.queue.getJobs(['paused']),
-      ]);
+      let totalWaiting = 0,
+        totalActive = 0,
+        totalCompleted = 0,
+        totalFailed = 0,
+        totalDelayed = 0,
+        totalStalled = 0;
+
+      // Aggregate metrics from all partitions
+      for (let partitionId = 0; partitionId < this.partitionCount; partitionId++) {
+        const queue = this.queues.get(partitionId)!;
+
+        const [waiting, active, completed, failed, delayed, stalled] = await Promise.all([
+          queue.getWaiting(),
+          queue.getActive(),
+          queue.getCompleted(),
+          queue.getFailed(),
+          queue.getDelayed(),
+          queue.getJobs(['paused']),
+        ]);
+
+        totalWaiting += waiting.length;
+        totalActive += active.length;
+        totalCompleted += completed.length;
+        totalFailed += failed.length;
+        totalDelayed += delayed.length;
+        totalStalled += stalled.length;
+      }
 
       const health: QueueHealth = {
-        name: this.queue.name,
-        status: this.calculateHealthStatus(waiting, active, failed),
+        name: `processing-partitioned-${this.partitionCount}`,
+        status: this.calculateHealthStatus(totalWaiting, totalActive, totalFailed),
 
         jobCounts: {
-          waiting: waiting.length,
-          active: active.length,
-          completed: completed.length,
-          failed: failed.length,
-          delayed: delayed.length,
-          stalled: stalled.length,
+          waiting: totalWaiting,
+          active: totalActive,
+          completed: totalCompleted,
+          failed: totalFailed,
+          delayed: totalDelayed,
+          stalled: totalStalled,
         },
 
         performance: {
           throughput: this.healthMetrics.performance?.throughput || 0,
           avgProcessingTime: this.healthMetrics.performance?.avgProcessingTime || 0,
-          failureRate:
-            failed.length > 0 ? (failed.length / (completed.length + failed.length)) * 100 : 0,
+          failureRate: totalFailed > 0 ? (totalFailed / (totalCompleted + totalFailed)) * 100 : 0,
         },
 
         workers: {
@@ -410,11 +480,11 @@ export class ProcessingQueue extends EventEmitter {
     } catch (error) {
       logger.error('Failed to get processing queue health', {
         error: error instanceof Error ? error.message : String(error),
-        queueName: this.queue.name,
+        partitionCount: this.partitionCount,
       });
 
       return {
-        name: this.queue.name,
+        name: `processing-partitioned-${this.partitionCount}`,
         status: 'unhealthy',
         jobCounts: { waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0, stalled: 0 },
         performance: { throughput: 0, avgProcessingTime: 0, failureRate: 100 },
@@ -425,7 +495,7 @@ export class ProcessingQueue extends EventEmitter {
   }
 
   /**
-   * Cleanup old completed and failed jobs
+   * Cleanup old completed and failed jobs across all partitions
    */
   public async cleanup(): Promise<void> {
     try {
@@ -433,188 +503,220 @@ export class ProcessingQueue extends EventEmitter {
       const oneHourAgo = now - 60 * 60 * 1000;
       const sixHoursAgo = now - 6 * 60 * 60 * 1000;
 
-      // Clean completed jobs older than 1 hour
-      await this.queue.clean(oneHourAgo, 200, 'completed');
+      // Clean jobs in all partitions
+      for (let partitionId = 0; partitionId < this.partitionCount; partitionId++) {
+        const queue = this.queues.get(partitionId)!;
 
-      // Clean failed jobs older than 6 hours
-      await this.queue.clean(sixHoursAgo, 100, 'failed');
+        // Clean completed jobs older than 1 hour
+        await queue.clean(oneHourAgo, 200, 'completed');
 
-      logger.debug('Processing queue cleanup completed', {
-        queueName: this.queue.name,
+        // Clean failed jobs older than 6 hours
+        await queue.clean(sixHoursAgo, 100, 'failed');
+      }
+
+      logger.debug('Processing queues cleanup completed', {
+        partitionCount: this.partitionCount,
         oneHourAgo: new Date(oneHourAgo).toISOString(),
         sixHoursAgo: new Date(sixHoursAgo).toISOString(),
       });
     } catch (error) {
-      logger.error('Processing queue cleanup failed', {
+      logger.error('Processing queues cleanup failed', {
         error: error instanceof Error ? error.message : String(error),
-        queueName: this.queue.name,
+        partitionCount: this.partitionCount,
       });
     }
   }
 
   /**
-   * Pause the queue
+   * Pause all partition queues
    */
   public async pause(): Promise<void> {
-    await this.queue.pause();
-    logger.info('Processing queue paused', { queueName: this.queue.name });
+    for (const queue of this.queues.values()) {
+      await queue.pause();
+    }
+    logger.info('All processing partition queues paused', {
+      partitionCount: this.partitionCount,
+    });
   }
 
   /**
-   * Resume the queue
+   * Resume all partition queues
    */
   public async resume(): Promise<void> {
-    await this.queue.resume();
-    logger.info('Processing queue resumed', { queueName: this.queue.name });
+    for (const queue of this.queues.values()) {
+      await queue.resume();
+    }
+    logger.info('All processing partition queues resumed', {
+      partitionCount: this.partitionCount,
+    });
   }
 
   /**
-   * Close the queue and cleanup connections
+   * Close all queues and cleanup connections
    */
   public async close(): Promise<void> {
     try {
-      await this.queue.close();
-      await this.queueEvents.close();
+      // Close all queues
+      const closePromises: Promise<void>[] = [];
 
+      for (const queue of this.queues.values()) {
+        closePromises.push(queue.close());
+      }
+
+      for (const queueEvents of this.queueEvents.values()) {
+        closePromises.push(queueEvents.close());
+      }
+
+      await Promise.all(closePromises);
+
+      this.queues.clear();
+      this.queueEvents.clear();
       this.isInitialized = false;
 
-      logger.info('Processing queue closed successfully', {
-        queueName: this.queue.name,
+      logger.info('All processing partition queues closed successfully', {
+        partitionCount: this.partitionCount,
       });
     } catch (error) {
-      logger.error('Failed to close processing queue', {
+      logger.error('Failed to close processing queues', {
         error: error instanceof Error ? error.message : String(error),
-        queueName: this.queue.name,
+        partitionCount: this.partitionCount,
+      });
+      throw error;
+    }
+  }
+
+  // Private helper methods...
+
+  /**
+   * Add jobs to a single partition using bulk operations
+   */
+  private async addJobsToSinglePartition(
+    partitionId: number,
+    jobsData: Array<{ data: ProcessingJobData; options?: JobsOptions }>,
+    traceId: string
+  ): Promise<Job<ProcessingJobData, ProcessingJobResult>[]> {
+    const queue = this.getPartitionQueue(partitionId);
+    const log = logger.withTrace(traceId);
+
+    if (jobsData.length === 0) {
+      return [];
+    }
+
+    try {
+      // Prepare bulk job data
+      const bulkJobs = jobsData.map(({ data, options = {} }, index) => {
+        this.validateJobData(data);
+
+        const jobId = `processing-${data.actionId}-${data.chunkId}-p${partitionId}-${Date.now()}-${index}`;
+        const jobOptions: JobsOptions = {
+          priority: 5,
+          attempts: 5,
+          backoff: { type: 'exponential' },
+          removeOnComplete: 100,
+          removeOnFail: 50,
+          jobId,
+          ...options,
+        };
+
+        return {
+          name: 'process-chunk',
+          data,
+          opts: jobOptions,
+        };
+      });
+
+      // Add jobs in bulk to this partition
+      const jobs = await queue.addBulk(bulkJobs);
+
+      log.info('Bulk processing jobs added to partition successfully', {
+        partitionId,
+        queueName: queue.name,
+        jobCount: jobs.length,
+        successfulJobs: jobs.filter(j => j.id).length,
+        failedJobs: jobs.filter(j => !j.id).length,
+      });
+
+      // Emit events for successful jobs
+      jobs.forEach(job => {
+        if (job.id) {
+          this.emitJobEvent('started', job as any, partitionId, traceId);
+        }
+      });
+
+      return jobs as Job<ProcessingJobData, ProcessingJobResult>[];
+    } catch (error) {
+      log.error('Failed to add bulk processing jobs to partition', {
+        error: error instanceof Error ? error.message : String(error),
+        partitionId,
+        jobCount: jobsData.length,
       });
       throw error;
     }
   }
 
   /**
-   * Setup event listeners for monitoring
+   * Get jobs by action ID in specific partition
    */
-  // private setupEventListeners(): void {
-  //   // Job progress events
-  //   this.queueEvents.on('progress', (job, progress) => {
-  //     logger.debug('Processing job progress update', {
-  //       jobId: job.jobId,
-  //       progress,
-  //       queueName: this.queue.name,
-  //     });
+  private async getJobsByActionIdInPartition(
+    actionId: string,
+    partitionId: number,
+    traceId: string
+  ): Promise<Job<ProcessingJobData, ProcessingJobResult>[]> {
+    const queue = this.getPartitionQueue(partitionId);
 
-  //     this.emit('jobProgress', job.jobId, progress);
-  //   });
+    // Get jobs from different states
+    const [waiting, active, completed, failed] = await Promise.all([
+      queue.getWaiting(),
+      queue.getActive(),
+      queue.getCompleted(),
+      queue.getFailed(),
+    ]);
 
-  //   // Job completion events
-  //   this.queueEvents.on('completed', (job, result) => {
-  //     logger.info('Processing job completed successfully', {
-  //       jobId: job.jobId,
-  //       actionId: job.returnvalue?.actionId,
-  //       chunkId: job.returnvalue?.chunkId,
-  //       success: job?.returnvalue?.success,
-  //       queueName: this.queue.name,
-  //     });
-
-  //     this.emitJobEvent('completed', job as any, job.returnvalue?.traceId);
-  //     this.updateThroughputMetrics();
-  //   });
-
-  //   // Job failure events
-  //   this.queueEvents.on('failed', (job, err) => {
-  //     logger.error('Processing job failed', {
-  //       jobId: job.jobId,
-  //       actionId: job.data?.actionId,
-  //       chunkId: job.data?.chunkId,
-  //       error: err.message,
-  //       queueName: this.queue.name,
-  //     });
-
-  //     this.emitJobEvent('failed', job as any, job.data?.traceId);
-  //   });
-
-  //   // Job stalled events
-  //   this.queueEvents.on('stalled', job => {
-  //     logger.warn('Processing job stalled', {
-  //       jobId: job.id,
-  //       actionId: job.data?.actionId,
-  //       chunkId: job.data?.chunkId,
-  //       queueName: this.queue.name,
-  //     });
-
-  //     this.emitJobEvent('stalled', job as any, job.data?.traceId);
-  //   });
-
-  //   // Connection events
-  //   this.queueEvents.on('error', err => {
-  //     logger.error('Processing queue events error', {
-  //       error: err.message,
-  //       queueName: this.queue.name,
-  //     });
-  //   });
-  // }
-
-  /**
-   * Start health monitoring
-   */
-  private startHealthMonitoring(): void {
-    // Update health metrics every 30 seconds
-    setInterval(async () => {
-      try {
-        await this.updateHealthMetrics();
-      } catch (error) {
-        logger.error('Failed to update processing queue health metrics', {
-          error: error instanceof Error ? error.message : String(error),
-          queueName: this.queue.name,
-        });
-      }
-    }, 30000);
-
-    // Cleanup old jobs every hour
-    setInterval(
-      async () => {
-        await this.cleanup();
-      },
-      60 * 60 * 1000
-    );
+    // Filter jobs by action ID
+    const allJobs = [...waiting, ...active, ...completed, ...failed];
+    return allJobs.filter(job => job.data.actionId === actionId) as Job<
+      ProcessingJobData,
+      ProcessingJobResult
+    >[];
   }
 
   /**
    * Validate job data before adding to queue
    */
-  private validateJobData(jobData: ProcessingJobData): void {
-    if (!jobData.actionId) {
+  private validateJobData(data: ProcessingJobData): void {
+    if (!data.actionId) {
       throw new Error('actionId is required');
     }
 
-    if (!jobData.accountId) {
+    if (!data.accountId) {
       throw new Error('accountId is required');
     }
 
-    if (!jobData.chunkId) {
+    if (!data.chunkId) {
       throw new Error('chunkId is required');
     }
 
-    if (!jobData.chunkPath) {
+    if (!data.chunkPath) {
       throw new Error('chunkPath is required');
     }
 
-    if (!jobData.entityType) {
+    if (!data.entityType) {
       throw new Error('entityType is required');
     }
 
-    if (!jobData.actionType) {
+    if (!data.actionType) {
       throw new Error('actionType is required');
     }
 
-    if (jobData.recordCount < 0) {
+    if (data.recordCount < 0) {
       throw new Error('recordCount cannot be negative');
     }
 
-    if (jobData.chunkIndex < 0) {
+    if (data.chunkIndex < 0) {
       throw new Error('chunkIndex cannot be negative');
     }
 
-    if (jobData.totalChunks < 1) {
+    if (data.totalChunks < 1) {
       throw new Error('totalChunks must be at least 1');
     }
   }
@@ -623,13 +725,13 @@ export class ProcessingQueue extends EventEmitter {
    * Calculate queue health status
    */
   private calculateHealthStatus(
-    waiting: any[],
-    active: any[],
-    failed: any[]
+    waiting: number,
+    active: number,
+    failed: number
   ): 'healthy' | 'degraded' | 'unhealthy' {
-    const totalJobs = waiting.length + active.length + failed.length;
-    const failureRate = totalJobs > 0 ? (failed.length / totalJobs) * 100 : 0;
-    const queueSize = waiting.length + active.length;
+    const totalJobs = waiting + active + failed;
+    const failureRate = totalJobs > 0 ? (failed / totalJobs) * 100 : 0;
+    const queueSize = waiting + active;
 
     if (failureRate > 50 || queueSize > 50000) {
       return 'unhealthy';
@@ -641,42 +743,15 @@ export class ProcessingQueue extends EventEmitter {
   }
 
   /**
-   * Update health metrics
-   */
-  private async updateHealthMetrics(): Promise<void> {
-    // This would be implemented with actual metrics collection
-    // For now, we'll use placeholder values
-    this.healthMetrics = {
-      performance: {
-        throughput: 0, // Jobs per minute - would be calculated from job completion events
-        avgProcessingTime: 0, // Average processing time - would be calculated from job timing
-        failureRate: 0,
-      },
-      workers: {
-        active: 0, // Would be tracked from worker registrations
-        total: 0, // Would be tracked from worker registrations
-        memoryUsage: 0, // Would be collected from worker health reports
-      },
-    };
-  }
-
-  /**
-   * Update throughput metrics
-   */
-  private updateThroughputMetrics(): void {
-    // Implementation would track job completion rates
-    // This is a placeholder for the actual metrics collection
-  }
-
-  /**
    * Emit job event for external monitoring
    */
   private emitJobEvent(
     eventType: 'started' | 'completed' | 'failed' | 'stalled',
     job: Job<ProcessingJobData>,
+    partitionId: number,
     traceId?: string
   ): void {
-    const event: JobEvent = {
+    const event: JobEvent & { partitionId: number } = {
       jobId: job.id || 'unknown',
       actionId: job.data.actionId,
       accountId: job.data.accountId,
@@ -691,23 +766,24 @@ export class ProcessingQueue extends EventEmitter {
         timestamp: new Date().toISOString(),
       },
       traceId: traceId || job.data.traceId,
+      partitionId,
     };
 
     this.emit('jobEvent', event);
   }
 
   /**
-   * Get the underlying BullMQ queue instance
+   * Get partition count
    */
-  public getQueue(): Queue<ProcessingJobData, ProcessingJobResult> {
-    return this.queue;
+  public getPartitionCount(): number {
+    return this.partitionCount;
   }
 
   /**
-   * Get queue events instance
+   * Get all queue instances (for monitoring/debugging)
    */
-  public getQueueEvents(): QueueEvents {
-    return this.queueEvents;
+  public getAllQueues(): Map<number, Queue<ProcessingJobData, ProcessingJobResult>> {
+    return new Map(this.queues);
   }
 }
 

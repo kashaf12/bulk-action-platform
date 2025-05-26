@@ -153,6 +153,7 @@ export abstract class BaseRepository<T extends IEntity> implements IRepository<T
         log.debug('Entity row is undefined');
         throw new Error('Failed to create entity, no rows returned');
       }
+
       const createdEntity = this.createEntityFromRow(row);
 
       log.info('Successfully created entity', {
