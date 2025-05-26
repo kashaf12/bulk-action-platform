@@ -463,6 +463,7 @@ export class BulkActionStatRepository extends BaseRepository<IBulkActionStat> {
     actionId: string,
     traceId: string
   ): Promise<{
+    id?: string;
     actionId: string;
     totalRecords: number;
     successfulRecords: number;
@@ -488,6 +489,7 @@ export class BulkActionStatRepository extends BaseRepository<IBulkActionStat> {
       }
 
       const summary = {
+        id: stats.id,
         actionId: stats.actionId,
         totalRecords: stats.totalRecords,
         successfulRecords: stats.successfulRecords,

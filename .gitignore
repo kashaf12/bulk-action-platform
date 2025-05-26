@@ -6,3 +6,7 @@ node_modules
 .env
 .DS_Store
 scripts/csv
+db
+storage
+pgadmin
+redis

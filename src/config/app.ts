@@ -61,7 +61,7 @@ const envSchema = z.object({
 
   // File Processing
   MAX_FILE_SIZE_MB: z.coerce.number().int().min(1).max(1000).default(10),
-  MAX_CSV_ROWS: z.coerce.number().int().min(1).max(100000).default(10000),
+  MAX_CSV_ROWS: z.coerce.number().int().min(1).max(10000).default(10000),
   TEMP_DIR: z.string().default('./temp'),
 
   // Bulk Processing

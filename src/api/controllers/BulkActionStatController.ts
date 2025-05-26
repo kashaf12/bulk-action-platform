@@ -67,6 +67,7 @@ export class BulkActionStatController extends BaseController {
         res,
         {
           id: stats.id,
+          actionId: stats.actionId,
           totalRecords: stats.totalRecords,
           successfulRecords: stats.successfulRecords,
           failedRecords: stats.failedRecords,

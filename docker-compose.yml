@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # Node.js API
   api:
     build:
       context: .
@@ -19,19 +18,16 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD:-redis}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MAX_FILE_SIZE_MB=10
-      - MAX_CSV_ROWS=100000
+      - MAX_CSV_ROWS=10000
       - BULK_ACTION_RATE_LIMIT=10000
-      # MinIO Configuration
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME:-storage}
       - MINIO_REGION=us-east-1
-      # Worker Configuration
       - INGESTION_WORKERS=${INGESTION_WORKERS:-5}
       - CHUNKING_WORKERS=${CHUNKING_WORKERS:-3}
-      # CORS and Security
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000}
       - MAX_REQUEST_SIZE=50mb
     ports:
@@ -76,14 +72,12 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-redis}
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      # MinIO Configuration
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME:-storage}
       - MINIO_REGION=us-east-1
-      # Chunking Worker Configuration
       - CHUNKING_WORKER_COUNT=${CHUNKING_WORKERS:-3}
       - MAX_MEMORY_PER_WORKER=256
       - TOTAL_MEMORY_LIMIT=1024
@@ -103,7 +97,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     deploy:
-      replicas: ${CHUNKING_REPLICAS:-2}  # Run 2 instances of chunking service
+      replicas: ${CHUNKING_REPLICAS:-2}
       resources:
         limits:
           memory: 1.5G
@@ -139,14 +133,12 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-redis}
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      # MinIO Configuration
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME:-storage}
       - MINIO_REGION=us-east-1
-      # Processing Worker Configuration
       - PROCESSING_WORKER_COUNT=${INGESTION_WORKERS:-5}
       - CONCURRENCY_PER_WORKER=3
       - BATCH_SIZE=1000
@@ -169,7 +161,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     deploy:
-      replicas: ${PROCESSING_REPLICAS:-3}  # Run 3 instances of processing service
+      replicas: ${PROCESSING_REPLICAS:-3}
       resources:
         limits:
           memory: 1.5G
@@ -189,6 +181,7 @@ services:
         max-size: "10m"
         max-file: "3"
         labels: "service=processing-workers"
+
   postgres:
     image: postgres:15-alpine
     container_name: bulk-action-postgres
@@ -200,7 +193,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./db/postgres:/var/lib/postgresql/data
       - ./docker/postgres/init:/docker-entrypoint-initdb.d
       - ./docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf
     restart: unless-stopped
@@ -237,7 +230,7 @@ services:
       - "6379:6379"
       - "8001:8001"
     volumes:
-      - redis_data:/data
+      - ./redis:/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -284,7 +277,7 @@ services:
     ports:
       - "5050:80"
     volumes:
-      - pgadmin_data:/var/lib/pgadmin
+      - ./pgadmin:/var/lib/pgadmin
     depends_on:
       postgres:
         condition: service_healthy
@@ -311,7 +304,7 @@ services:
       - "9001:9001"
     command: server /data --console-address ":9001"
     volumes:
-      - minio_data:/data
+      - ./storage:/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
@@ -345,13 +338,3 @@ services:
         max-size: "10m"
         max-file: "3"
         labels: "service=minio-init"
-
-volumes:
-  postgres_data:
-    driver: local
-  pgadmin_data:
-    driver: local
-  redis_data:
-    driver: local
-  minio_data:
-    driver: local
