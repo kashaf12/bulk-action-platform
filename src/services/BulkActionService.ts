@@ -277,9 +277,9 @@ export class BulkActionService implements IService {
     try {
       const bulkAction = await this.getBulkActionById(id, traceId);
 
-      if (bulkAction.isFinished()) {
-        throw new ConflictError('Cannot cancel a finished bulk action');
-      }
+      // if (bulkAction.isFinished()) {
+      //   throw new ConflictError('Cannot cancel a finished bulk action');
+      // }
 
       const updatedBulkAction = await this.updateBulkAction(id, { status: 'cancelled' }, traceId);
 
@@ -421,7 +421,6 @@ export class BulkActionService implements IService {
         id,
         processedEntities,
         totalEntities: updatedAction.totalEntities,
-        progressPercentage: updatedAction.getProgressPercentage(),
       });
 
       return updatedAction;
@@ -538,13 +537,13 @@ export class BulkActionService implements IService {
     }
 
     // Validate entity type
-    const validEntityTypes: EntityType[] = ['contact', 'company', 'lead', 'opportunity', 'task'];
+    const validEntityTypes: EntityType[] = ['contact'];
     if (!validEntityTypes.includes(request.entityType)) {
       throw new ValidationError(`Invalid entity type: ${request.entityType}`);
     }
 
     // Validate action type
-    const validActionTypes: BulkActionType[] = ['bulk_update', 'bulk_delete', 'bulk_create'];
+    const validActionTypes: BulkActionType[] = ['bulk_update'];
     if (!validActionTypes.includes(request.actionType)) {
       throw new ValidationError(`Invalid action type: ${request.actionType}`);
     }

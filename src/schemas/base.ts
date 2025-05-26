@@ -29,11 +29,6 @@ export const nameSchema = z
   .trim()
   .optional();
 
-export const phoneSchema = z
-  .string()
-  .regex(/^\+?[\d\s\-\(\)]+$/, 'Invalid phone number format')
-  .optional();
-
 export const timestampSchema = z.coerce.date();
 
 // Base entity schema

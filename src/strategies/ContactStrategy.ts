@@ -15,9 +15,6 @@ export class ContactStrategy implements EntityStrategy<IContact> {
       email: rowData.email?.trim()?.toLowerCase(),
       name: rowData.name?.trim(),
       age: rowData.age ? parseInt(rowData.age) : undefined,
-      phone: rowData.phone?.trim(),
-      company: rowData.company?.trim(),
-      status: (rowData.status?.toLowerCase() as 'active' | 'inactive' | 'pending') || 'active',
     } as IContact;
   }
 

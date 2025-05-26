@@ -384,6 +384,7 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
   /**
    * Process a single chunk (unchanged logic, added partition logging)
    */
+  // Replace the processChunk method with this updated version:
   private async processChunk(
     jobData: ProcessingJobData,
     job: any,
@@ -403,29 +404,25 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
       const contacts: any[] = [];
       let recordsProcessed = 0;
       let recordsFailed = 0;
+      let progressUpdateCounter = 0;
+      let statsUpdateCounter = 0;
+
+      // Accumulate stats for batch updates (every 500 records)
+      let pendingStats = { successful: 0, failed: 0, skipped: 0 };
 
       // Process CSV rows
       const onRow = async (row: any) => {
         recordsProcessed++;
+        progressUpdateCounter++;
+        statsUpdateCounter++;
 
         try {
           // Map CSV row to contact data
           const contactData = this.mapRowToContact(row.data);
           contacts.push(contactData);
 
-          // Log partition assignment for debugging (sample 1% of records)
-          if (recordsProcessed % 100 === 1) {
-            log.debug('Processing record in partition', {
-              rowNumber: row.rowNumber,
-              recordId: contactData.id,
-              partitionId,
-              chunkId: jobData.chunkId,
-              hashRange: `${jobData.hashRangeStart}-${jobData.hashRangeEnd}`,
-            });
-          }
-
-          // Update job progress periodically
-          if (recordsProcessed % 100 === 0) {
+          // Update job progress every 100 records (UI responsiveness)
+          if (progressUpdateCounter >= 100) {
             const progress = Math.round((recordsProcessed / jobData.recordCount) * 100);
             await job.updateProgress({
               stage: 'processing',
@@ -435,9 +432,43 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
               message: `Processing records in partition ${partitionId}: ${recordsProcessed}/${jobData.recordCount}`,
               timestamp: new Date().toISOString(),
             });
+            progressUpdateCounter = 0;
+
+            log.debug('Progress updated', {
+              chunkId: jobData.chunkId,
+              partitionId,
+              recordsProcessed,
+              totalRecords: jobData.recordCount,
+              progress,
+            });
+          }
+
+          // Update bulk action stats every 500 records (DB efficiency)
+          if (
+            statsUpdateCounter >= 500 &&
+            pendingStats.successful + pendingStats.failed + pendingStats.skipped > 0
+          ) {
+            await this.bulkActionStatService.incrementCounters(
+              jobData.actionId,
+              pendingStats,
+              jobData.traceId
+            );
+
+            log.debug('Stats updated incrementally', {
+              chunkId: jobData.chunkId,
+              partitionId,
+              pendingStats,
+              recordsProcessed,
+            });
+
+            // Reset pending stats
+            pendingStats = { successful: 0, failed: 0, skipped: 0 };
+            statsUpdateCounter = 0;
           }
         } catch (error) {
           recordsFailed++;
+          pendingStats.failed++;
+
           log.warn('Failed to process row in partition', {
             rowNumber: row.rowNumber,
             partitionId,
@@ -455,27 +486,61 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
         recordsProcessed,
         recordsFailed,
         validRecords: contacts.length,
+        actionType: jobData.actionType,
       });
 
-      // Bulk upsert contacts to database
+      // Bulk database operation based on action type
       const dbStartTime = Date.now();
-      const bulkResult = await this.contactService.bulkCreateContacts(
-        contacts,
-        jobData.configuration.onConflict || 'skip',
-        jobData.traceId
-      );
+      let bulkResult: any;
+
+      if (jobData.actionType === 'bulk_update') {
+        // Use update-only method
+        bulkResult = await this.contactService.bulkUpdateContacts(contacts, jobData.traceId);
+
+        // Convert to expected format
+        bulkResult = {
+          created: [],
+          updated: bulkResult.updated,
+          skipped: [],
+          errors: bulkResult.failed,
+        };
+      } else {
+        // Use create/upsert method
+        bulkResult = await this.contactService.bulkCreateContacts(
+          contacts,
+          jobData.configuration.onConflict || 'skip',
+          jobData.traceId
+        );
+      }
+
       const dbTime = Date.now() - dbStartTime;
 
-      // Update bulk action statistics
+      // Final stats update with any remaining pending stats + final results
+      const finalStats = {
+        successful: pendingStats.successful + bulkResult.updated.length + bulkResult.created.length,
+        failed: pendingStats.failed + bulkResult.errors.length,
+        skipped: pendingStats.skipped + bulkResult.skipped.length,
+      };
+
       await this.bulkActionStatService.incrementCounters(
         jobData.actionId,
-        {
-          successful: bulkResult.created.length + bulkResult.updated.length,
-          failed: bulkResult.errors.length,
-          skipped: bulkResult.skipped.length,
-        },
+        finalStats,
         jobData.traceId
       );
+
+      log.info('Chunk processing completed in partition', {
+        chunkId: jobData.chunkId,
+        partitionId,
+        actionType: jobData.actionType,
+        dbResults: {
+          created: bulkResult.created.length,
+          updated: bulkResult.updated.length,
+          skipped: bulkResult.skipped.length,
+          errors: bulkResult.errors.length,
+        },
+        finalStats,
+        dbTime,
+      });
 
       const durationMs = Date.now() - startTime;
       const processingRate = recordsProcessed > 0 ? recordsProcessed / (durationMs / 1000) : 0;
@@ -499,7 +564,7 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
             errors: bulkResult.errors.length,
           },
           timing: {
-            connectionTime: 0, // TODO: Track actual connection time
+            connectionTime: 0,
             queryTime: dbTime,
             totalTime: dbTime,
           },

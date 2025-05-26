@@ -408,10 +408,6 @@ export class BulkActionRepository extends BaseRepository<IBulkAction> {
           COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled,
           
           COUNT(CASE WHEN entity_type = 'contact' THEN 1 END) as contact_count,
-          COUNT(CASE WHEN entity_type = 'company' THEN 1 END) as company_count,
-          COUNT(CASE WHEN entity_type = 'lead' THEN 1 END) as lead_count,
-          COUNT(CASE WHEN entity_type = 'opportunity' THEN 1 END) as opportunity_count,
-          COUNT(CASE WHEN entity_type = 'task' THEN 1 END) as task_count,
           
           COUNT(CASE WHEN action_type = 'bulk_update' THEN 1 END) as bulk_update_count,
           COUNT(CASE WHEN action_type = 'bulk_delete' THEN 1 END) as bulk_delete_count,
@@ -444,18 +440,13 @@ export class BulkActionRepository extends BaseRepository<IBulkAction> {
             completed: 0,
             failed: 0,
             cancelled: 0,
+            validating: 0,
           },
           byEntityType: {
             contact: 0,
-            company: 0,
-            lead: 0,
-            opportunity: 0,
-            task: 0,
           },
           byActionType: {
             bulk_update: 0,
-            bulk_delete: 0,
-            bulk_create: 0,
           },
         };
       }
@@ -468,18 +459,13 @@ export class BulkActionRepository extends BaseRepository<IBulkAction> {
           completed: parseInt(row.completed),
           failed: parseInt(row.failed),
           cancelled: parseInt(row.cancelled),
+          validating: parseInt(row.validating) || 0,
         },
         byEntityType: {
           contact: parseInt(row.contact_count),
-          company: parseInt(row.company_count),
-          lead: parseInt(row.lead_count),
-          opportunity: parseInt(row.opportunity_count),
-          task: parseInt(row.task_count),
         },
         byActionType: {
           bulk_update: parseInt(row.bulk_update_count),
-          bulk_delete: parseInt(row.bulk_delete_count),
-          bulk_create: parseInt(row.bulk_create_count),
         },
         avgProcessingTime: row.avg_processing_time_ms
           ? parseFloat(row.avg_processing_time_ms)

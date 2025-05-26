@@ -4,11 +4,9 @@
  */
 
 import { z } from 'zod';
-import { Contact } from '../../models/Contact';
 import { EntityType } from '../../types/entities/bulk-action';
-import { contactSchema, contactCreateSchema } from '../../schemas/entities/contact';
+import { contactCreateSchema } from '../../schemas/entities/contact';
 import { CSVRow, CSVHeader } from './CSVStreamReader';
-import { logger } from '../../utils/logger';
 import { ValidationError } from '../../utils/error';
 
 export interface ValidationRule {
@@ -23,12 +21,12 @@ export interface ValidationResult {
   isValid: boolean;
   rowNumber: number;
   validatedData: Record<string, unknown>;
-  errors: ValidationError[];
+  errors: ValidationErrorType[];
   warnings: ValidationWarning[];
   transformedData: Record<string, unknown>;
 }
 
-export interface ValidationError {
+export interface ValidationErrorType {
   field: string;
   value: string;
   code: ValidationErrorCode;
@@ -46,9 +44,7 @@ export interface ValidationWarning {
 export enum ValidationErrorCode {
   REQUIRED_FIELD_MISSING = 'REQUIRED_FIELD_MISSING',
   INVALID_EMAIL_FORMAT = 'INVALID_EMAIL_FORMAT',
-  INVALID_PHONE_FORMAT = 'INVALID_PHONE_FORMAT',
   INVALID_AGE_RANGE = 'INVALID_AGE_RANGE',
-  INVALID_STATUS_VALUE = 'INVALID_STATUS_VALUE',
   FIELD_TOO_LONG = 'FIELD_TOO_LONG',
   FIELD_TOO_SHORT = 'FIELD_TOO_SHORT',
   INVALID_CHARACTER_SET = 'INVALID_CHARACTER_SET',
@@ -176,7 +172,8 @@ export class CSVValidator {
     let errorCount = 0;
 
     for (let i = 0; i < rows.length; i++) {
-      const result = this.validateRow(rows[i], header);
+      if (!rows[i]) continue;
+      const result = this.validateRow(rows[i]!, header);
       results.push(result);
 
       if (!result.isValid) {
@@ -241,7 +238,7 @@ export class CSVValidator {
       const columnIndex = header.columnMap.get(normalizedCsvField);
 
       if (columnIndex !== undefined) {
-        const value = rowData[header.columns[columnIndex]];
+        const value = rowData[header.columns[columnIndex]!];
         if (value !== undefined) {
           mappedData[entityField] = value.trim();
         }
@@ -364,7 +361,7 @@ export class CSVValidator {
         for (const error of parseResult.error.errors) {
           result.errors.push({
             field: error.path.join('.'),
-            value: String(data[error.path[0]] || ''),
+            value: String(data[error.path[0]!] || ''),
             code: ValidationErrorCode.DATA_TYPE_MISMATCH,
             message: error.message,
             severity: 'error',
@@ -536,33 +533,6 @@ export class CSVValidator {
       transformer: (value: string) => parseInt(value),
       errorMessage: 'Age must be a number between 1 and 150',
     });
-
-    // Phone validation
-    this.validationRules.set('phone', {
-      field: 'phone',
-      required: false,
-      validator: (value: string) => /^\+?[\d\s\-\(\)]+$/.test(value),
-      transformer: (value: string) => value.replace(/\s+/g, ' ').trim(),
-      errorMessage: 'Invalid phone number format',
-    });
-
-    // Company validation
-    this.validationRules.set('company', {
-      field: 'company',
-      required: false,
-      validator: (value: string) => value.length <= 255,
-      transformer: (value: string) => value.trim(),
-      errorMessage: 'Company name must not exceed 255 characters',
-    });
-
-    // Status validation
-    this.validationRules.set('status', {
-      field: 'status',
-      required: false,
-      validator: (value: string) => ['active', 'inactive', 'pending'].includes(value.toLowerCase()),
-      transformer: (value: string) => value.toLowerCase() as 'active' | 'inactive' | 'pending',
-      errorMessage: 'Status must be active, inactive, or pending',
-    });
   }
 
   /**
@@ -590,11 +560,6 @@ export class CSVValidator {
         mappings.set('full_name', 'name');
         mappings.set('first_name', 'name'); // Could be enhanced to combine first+last
         mappings.set('age', 'age');
-        mappings.set('phone', 'phone');
-        mappings.set('phone_number', 'phone');
-        mappings.set('company', 'company');
-        mappings.set('company_name', 'company');
-        mappings.set('status', 'status');
         break;
     }
 
@@ -620,9 +585,6 @@ export class CSVValidator {
     const constraints: Record<string, { minLength?: number; maxLength?: number }> = {
       email: { maxLength: 255 },
       name: { maxLength: 255 },
-      phone: { maxLength: 50 },
-      company: { maxLength: 255 },
-      status: { maxLength: 20 },
     };
 
     return constraints[field] || {};
@@ -634,9 +596,7 @@ export class CSVValidator {
   private getValidationErrorCode(field: string): ValidationErrorCode {
     const errorCodes: Record<string, ValidationErrorCode> = {
       email: ValidationErrorCode.INVALID_EMAIL_FORMAT,
-      phone: ValidationErrorCode.INVALID_PHONE_FORMAT,
       age: ValidationErrorCode.INVALID_AGE_RANGE,
-      status: ValidationErrorCode.INVALID_STATUS_VALUE,
     };
 
     return errorCodes[field] || ValidationErrorCode.DATA_TYPE_MISMATCH;

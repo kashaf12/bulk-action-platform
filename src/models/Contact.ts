@@ -13,18 +13,12 @@ export class Contact extends BaseEntity implements IContact {
   public name?: string;
   public email: string;
   public age?: number;
-  public phone?: string;
-  public company?: string;
-  public status?: 'active' | 'inactive' | 'pending';
 
   constructor(data: IContact) {
     super(data);
     this.name = data.name;
     this.email = data.email;
     this.age = data.age;
-    this.phone = data.phone;
-    this.company = data.company;
-    this.status = data.status || 'active';
   }
 
   public static getEntityType(): string {
@@ -40,7 +34,7 @@ export class Contact extends BaseEntity implements IContact {
   }
 
   public static getOptionalFields(): string[] {
-    return [...super.getOptionalFields(), 'name', 'age', 'phone', 'company', 'status'];
+    return [...super.getOptionalFields(), 'name', 'age'];
   }
 
   public static getFieldValidators(): FieldValidators {
@@ -54,14 +48,6 @@ export class Contact extends BaseEntity implements IContact {
       age: (value: unknown): boolean => {
         if (typeof value !== 'number') return false;
         return Number.isInteger(value) && value > 0 && value < 150;
-      },
-      status: (value: unknown): boolean => {
-        return ['active', 'inactive', 'pending'].includes(value as string);
-      },
-      phone: (value: unknown): boolean => {
-        if (typeof value !== 'string') return false;
-        const phoneRegex = /^\+?[\d\s\-\(\)]+$/;
-        return phoneRegex.test(value);
       },
     };
   }
@@ -80,9 +66,6 @@ export class Contact extends BaseEntity implements IContact {
       name: 'name',
       email: 'email',
       age: 'age',
-      phone: 'phone',
-      company: 'company',
-      status: 'status',
     };
   }
 
@@ -109,9 +92,6 @@ export class Contact extends BaseEntity implements IContact {
       name: this.name,
       email: this.email,
       age: this.age,
-      phone: this.phone,
-      company: this.company,
-      status: this.status,
     };
   }
 
@@ -123,28 +103,10 @@ export class Contact extends BaseEntity implements IContact {
   }
 
   /**
-   * Check if contact is active
-   */
-  public isActive(): boolean {
-    return this.status === 'active';
-  }
-
-  /**
    * Get contact domain from email
    */
   public getDomain(): string {
     return this.email.split('@')[1] || '';
-  }
-
-  /**
-   * Update contact status with validation
-   */
-  public updateStatus(newStatus: 'active' | 'inactive' | 'pending'): void {
-    if (!['active', 'inactive', 'pending'].includes(newStatus)) {
-      throw new Error(`Invalid status: ${newStatus}`);
-    }
-    this.status = newStatus;
-    this.updatedAt = new Date();
   }
 
   /**
@@ -167,9 +129,6 @@ export class Contact extends BaseEntity implements IContact {
       name: this.name,
       email: this.email,
       age: this.age,
-      phone: this.phone,
-      company: this.company,
-      status: this.status,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     };

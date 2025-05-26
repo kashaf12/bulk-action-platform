@@ -11,10 +11,16 @@ import { ValidationError, NotFoundError, ConflictError } from '../utils/error';
 import { logger } from '../utils/logger';
 import { IService } from '../types/services';
 
+export interface BulkContactUpdateResult {
+  updated: IContact[];
+  failed: Array<{ contact: IContact; error: string }>;
+  totalProcessed: number;
+  successCount: number;
+  failureCount: number;
+}
+
 export interface ContactListOptions extends PaginationParams {
-  status?: 'active' | 'inactive' | 'pending';
   search?: string;
-  company?: string;
 }
 
 export interface BulkContactOperation {
@@ -46,9 +52,7 @@ export class ContactService implements IService {
       page: options.page,
       limit: options.limit,
       filters: {
-        status: options.status,
         search: options.search,
-        company: options.company,
       },
     });
 
@@ -56,9 +60,7 @@ export class ContactService implements IService {
       const searchParams: ContactSearchParams = {
         page: options.page,
         limit: options.limit,
-        status: options.status,
         search: options.search,
-        company: options.company,
       };
 
       const result = await this.contactRepository.findWithSearch(searchParams, traceId);
@@ -101,7 +103,6 @@ export class ContactService implements IService {
       log.info('Successfully fetched contact', {
         id,
         email: contact.email,
-        status: contact.status,
       });
 
       return contact;
@@ -155,7 +156,6 @@ export class ContactService implements IService {
     log.info('Creating contact', {
       email: data.email,
       name: data.name,
-      company: data.company,
     });
 
     try {
@@ -380,43 +380,86 @@ export class ContactService implements IService {
    * Bulk update contacts
    */
   public async bulkUpdateContacts(
-    updates: Array<{ id: string; data: ContactUpdateData }>,
+    contacts: ContactUpdateData[],
     traceId: string
-  ): Promise<{
-    updated: IContact[];
-    notFound: string[];
-    errors: Array<{ id: string; error: string }>;
-  }> {
+  ): Promise<BulkContactUpdateResult> {
     const log = logger.withTrace(traceId);
 
-    if (updates.length === 0) {
-      return { updated: [], notFound: [], errors: [] };
+    if (contacts.length === 0) {
+      return { updated: [], failed: [], totalProcessed: 0, successCount: 0, failureCount: 0 };
     }
 
-    log.info('Starting bulk contact update', {
-      count: updates.length,
+    log.info('Starting bulk contact update (update-only)', {
+      count: contacts.length,
     });
 
     try {
-      const result = await this.contactRepository.bulkUpdate(updates, traceId);
+      // Validate all contacts first
+      const validatedContacts: IContact[] = [];
+      const validationErrors: Array<{ contact: IContact; error: string }> = [];
+
+      for (const contactData of contacts) {
+        try {
+          const contact = new Contact(contactData as IContact);
+          const validation = Contact.validate(contact.toObject());
+
+          if (!validation.isValid) {
+            validationErrors.push({
+              contact: contactData as IContact,
+              error: `Validation failed: ${validation.errors.join(', ')}`,
+            });
+          } else {
+            validatedContacts.push(contact.toObject() as unknown as IContact);
+          }
+        } catch (error) {
+          validationErrors.push({
+            contact: contactData as IContact,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      // Perform bulk update only on validated contacts
+      let result: BulkContactUpdateResult;
+
+      if (validatedContacts.length > 0) {
+        const updateResult = await this.contactRepository.bulkUpdateOnly(
+          validatedContacts,
+          traceId
+        );
+        result = {
+          updated: updateResult.updated,
+          failed: [...updateResult.failed, ...validationErrors],
+          totalProcessed: contacts.length,
+          successCount: updateResult.successCount,
+          failureCount: updateResult.failureCount + validationErrors.length,
+        };
+      } else {
+        result = {
+          updated: [],
+          failed: validationErrors,
+          totalProcessed: contacts.length,
+          successCount: 0,
+          failureCount: validationErrors.length,
+        };
+      }
 
       log.info('Bulk contact update completed', {
-        totalUpdates: updates.length,
+        totalContacts: contacts.length,
         updated: result.updated.length,
-        notFound: result.notFound.length,
-        errors: result.errors.length,
+        failed: result.failed.length,
+        validationErrors: validationErrors.length,
       });
 
       return result;
     } catch (error) {
       log.error('Failed to bulk update contacts', {
         error: error instanceof Error ? error.message : String(error),
-        updateCount: updates.length,
+        contactCount: contacts.length,
       });
       throw error;
     }
   }
-
   /**
    * Get contact statistics
    */
