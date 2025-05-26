@@ -49,11 +49,6 @@ export interface BulkActionStatSummary {
   failedRecords: number;
   skippedRecords: number;
   duplicateRecords: number;
-  successRate: number;
-  failureRate: number;
-  skipRate: number;
-  duplicateRate: number;
-  completionRate: number;
   createdAt?: Date;
   updatedAt?: Date;
 }

@@ -5,14 +5,14 @@
  */
 
 import { z } from 'zod';
-import { IEntity, ValidationResult, FieldValidators, EntityMetadata } from '@/types';
+import { IEntity, ValidationResult } from '@/types';
 
 export abstract class BaseEntity implements IEntity {
-  public id?: string;
+  public id: string;
   public createdAt?: Date;
   public updatedAt?: Date;
 
-  constructor(data: IEntity = {}) {
+  constructor(data: IEntity) {
     this.id = data.id;
     this.createdAt = data.createdAt;
     this.updatedAt = data.updatedAt;
@@ -40,20 +40,6 @@ export abstract class BaseEntity implements IEntity {
   }
 
   /**
-   * Get optional fields for this entity type
-   */
-  public static getOptionalFields(): string[] {
-    return ['createdAt', 'updatedAt'];
-  }
-
-  /**
-   * Get field validators for this entity type
-   */
-  public static getFieldValidators(): FieldValidators {
-    return {};
-  }
-
-  /**
    * Get unique constraint fields (for deduplication)
    */
   public static getUniqueFields(): string[] {
@@ -75,21 +61,6 @@ export abstract class BaseEntity implements IEntity {
       id: 'id',
       createdAt: 'created_at',
       updatedAt: 'updated_at',
-    };
-  }
-
-  /**
-   * Get complete entity metadata
-   */
-  public static getMetadata(): EntityMetadata {
-    return {
-      entityType: this.getEntityType(),
-      tableName: this.getTableName(),
-      requiredFields: this.getRequiredFields(),
-      optionalFields: this.getOptionalFields(),
-      uniqueFields: this.getUniqueFields(),
-      fieldValidators: this.getFieldValidators(),
-      columnMappings: this.getColumnMappings(),
     };
   }
 
@@ -221,37 +192,5 @@ export abstract class BaseEntity implements IEntity {
     }
 
     return entityData;
-  }
-
-  /**
-   * Clone entity with optional updates
-   */
-  public clone(updates: Partial<IEntity> = {}): this {
-    const Constructor = this.constructor as new (data: IEntity) => this;
-    return new Constructor({
-      ...this.toObject(),
-      ...updates,
-    });
-  }
-
-  /**
-   * Check if entity has all required fields
-   */
-  public isValid(): boolean {
-    const requiredFields = (this.constructor as typeof BaseEntity).getRequiredFields();
-    const entityData = this.toObject();
-
-    return requiredFields.every(field => {
-      const value = entityData[field];
-      return value !== undefined && value !== null && value !== '';
-    });
-  }
-
-  /**
-   * Get validation errors for current entity state
-   */
-  public getValidationErrors(): string[] {
-    const validation = (this.constructor as typeof BaseEntity).validate(this.toObject());
-    return validation.errors;
   }
 }

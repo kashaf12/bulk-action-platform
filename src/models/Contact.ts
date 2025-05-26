@@ -33,25 +33,6 @@ export class Contact extends BaseEntity implements IContact {
     return [...super.getRequiredFields(), 'email'];
   }
 
-  public static getOptionalFields(): string[] {
-    return [...super.getOptionalFields(), 'name', 'age'];
-  }
-
-  public static getFieldValidators(): FieldValidators {
-    return {
-      ...super.getFieldValidators(),
-      email: (value: unknown): boolean => {
-        if (typeof value !== 'string') return false;
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        return emailRegex.test(value);
-      },
-      age: (value: unknown): boolean => {
-        if (typeof value !== 'number') return false;
-        return Number.isInteger(value) && value > 0 && value < 150;
-      },
-    };
-  }
-
   public static getUniqueFields(): string[] {
     return ['email'];
   }
@@ -118,19 +99,5 @@ export class Contact extends BaseEntity implements IContact {
       throw new Error(`Invalid contact data: ${validation.errors?.join(', ')}`);
     }
     return new Contact(validation.data as IContact);
-  }
-
-  /**
-   * Sanitize contact data for API response
-   */
-  public toApiResponse(): Record<string, unknown> {
-    return {
-      id: this.id,
-      name: this.name,
-      email: this.email,
-      age: this.age,
-      createdAt: this.createdAt,
-      updatedAt: this.updatedAt,
-    };
   }
 }

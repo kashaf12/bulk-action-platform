@@ -3,7 +3,7 @@
  */
 
 export interface IEntity {
-  id?: string;
+  id: string;
   createdAt?: Date;
   updatedAt?: Date;
 }

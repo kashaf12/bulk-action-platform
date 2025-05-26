@@ -92,8 +92,6 @@ export class BulkActionStatService implements IService {
 
       log.info('Successfully generated bulk action statistics summary', {
         actionId,
-        successRate: summary.successRate,
-        completionRate: summary.completionRate,
       });
 
       return summary;
@@ -408,22 +406,6 @@ export class BulkActionStatService implements IService {
         error: error instanceof Error ? error.message : String(error),
         updateCount: updates.length,
       });
-      throw error;
-    }
-  }
-
-  /**
-   * Calculate processing completion percentage
-   */
-  public async getCompletionPercentage(actionId: string, traceId: string): Promise<number> {
-    try {
-      const stats = await this.getStatsByActionId(actionId, traceId);
-      const bulkActionStat = new BulkActionStat(stats);
-      return bulkActionStat.getCompletionRate();
-    } catch (error) {
-      if (error instanceof NotFoundError) {
-        return 0;
-      }
       throw error;
     }
   }

@@ -7,7 +7,6 @@ import { z } from 'zod';
 import { BaseEntity } from '../core/BaseEntity';
 import { IBulkActionStat, BulkActionStatSummary } from '../types/entities/bulk-action-stat';
 import { bulkActionStatSchema } from '../schemas/entities/bulk-action-stat';
-import { FieldValidators } from '../types';
 
 export class BulkActionStat extends BaseEntity implements IBulkActionStat {
   public actionId: string;
@@ -37,38 +36,6 @@ export class BulkActionStat extends BaseEntity implements IBulkActionStat {
 
   public static getRequiredFields(): string[] {
     return ['actionId'];
-  }
-
-  public static getOptionalFields(): string[] {
-    return [
-      ...super.getOptionalFields(),
-      'totalRecords',
-      'successfulRecords',
-      'failedRecords',
-      'skippedRecords',
-      'duplicateRecords',
-    ];
-  }
-
-  public static getFieldValidators(): FieldValidators {
-    return {
-      ...super.getFieldValidators(),
-      totalRecords: (value: unknown): boolean => {
-        return typeof value === 'number' && value >= 0 && Number.isInteger(value);
-      },
-      successfulRecords: (value: unknown): boolean => {
-        return typeof value === 'number' && value >= 0 && Number.isInteger(value);
-      },
-      failedRecords: (value: unknown): boolean => {
-        return typeof value === 'number' && value >= 0 && Number.isInteger(value);
-      },
-      skippedRecords: (value: unknown): boolean => {
-        return typeof value === 'number' && value >= 0 && Number.isInteger(value);
-      },
-      duplicateRecords: (value: unknown): boolean => {
-        return typeof value === 'number' && value >= 0 && Number.isInteger(value);
-      },
-    };
   }
 
   public static getTableName(): string {
@@ -123,47 +90,6 @@ export class BulkActionStat extends BaseEntity implements IBulkActionStat {
       skipped_records: this.skippedRecords,
       duplicate_records: this.duplicateRecords,
     };
-  }
-
-  /**
-   * Calculate success rate as percentage
-   */
-  public getSuccessRate(): number {
-    if (this.totalRecords === 0) return 0;
-    return Math.round((this.successfulRecords / this.totalRecords) * 100 * 100) / 100; // 2 decimal places
-  }
-
-  /**
-   * Calculate failure rate as percentage
-   */
-  public getFailureRate(): number {
-    if (this.totalRecords === 0) return 0;
-    return Math.round((this.failedRecords / this.totalRecords) * 100 * 100) / 100;
-  }
-
-  /**
-   * Calculate skip rate as percentage
-   */
-  public getSkipRate(): number {
-    if (this.totalRecords === 0) return 0;
-    return Math.round((this.skippedRecords / this.totalRecords) * 100 * 100) / 100;
-  }
-
-  /**
-   * Calculate duplicate rate as percentage
-   */
-  public getDuplicateRate(): number {
-    if (this.totalRecords === 0) return 0;
-    return Math.round((this.duplicateRecords / this.totalRecords) * 100 * 100) / 100;
-  }
-
-  /**
-   * Calculate completion rate (processed vs total)
-   */
-  public getCompletionRate(): number {
-    if (this.totalRecords === 0) return 0;
-    const processedRecords = this.successfulRecords + this.failedRecords + this.skippedRecords;
-    return Math.round((processedRecords / this.totalRecords) * 100 * 100) / 100;
   }
 
   /**
@@ -263,17 +189,6 @@ export class BulkActionStat extends BaseEntity implements IBulkActionStat {
   }
 
   /**
-   * Create bulk action stat instance from API data
-   */
-  public static fromApiData(data: Record<string, unknown>): BulkActionStat {
-    const validation = this.safeParse(data);
-    if (!validation.success) {
-      throw new Error(`Invalid bulk action stat data: ${validation.errors?.join(', ')}`);
-    }
-    return new BulkActionStat(validation.data as IBulkActionStat);
-  }
-
-  /**
    * Get detailed summary with calculated metrics
    */
   public getSummary(): BulkActionStatSummary {
@@ -284,48 +199,8 @@ export class BulkActionStat extends BaseEntity implements IBulkActionStat {
       failedRecords: this.failedRecords,
       skippedRecords: this.skippedRecords,
       duplicateRecords: this.duplicateRecords,
-      successRate: this.getSuccessRate(),
-      failureRate: this.getFailureRate(),
-      skipRate: this.getSkipRate(),
-      duplicateRate: this.getDuplicateRate(),
-      completionRate: this.getCompletionRate(),
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
-    };
-  }
-
-  /**
-   * Sanitize bulk action stat data for API response
-   */
-  public toApiResponse(): Record<string, unknown> {
-    return {
-      actionId: this.actionId,
-      totalRecords: this.totalRecords,
-      successfulRecords: this.successfulRecords,
-      failedRecords: this.failedRecords,
-      skippedRecords: this.skippedRecords,
-      duplicateRecords: this.duplicateRecords,
-      processedRecords: this.getProcessedRecords(),
-      successRate: this.getSuccessRate(),
-      failureRate: this.getFailureRate(),
-      skipRate: this.getSkipRate(),
-      duplicateRate: this.getDuplicateRate(),
-      completionRate: this.getCompletionRate(),
-      createdAt: this.createdAt,
-      updatedAt: this.updatedAt,
-    };
-  }
-
-  /**
-   * Get stat summary for logging
-   */
-  public getLogSummary(): Record<string, unknown> {
-    return {
-      actionId: this.actionId,
-      totalRecords: this.totalRecords,
-      processedRecords: this.getProcessedRecords(),
-      successRate: `${this.getSuccessRate()}%`,
-      completionRate: `${this.getCompletionRate()}%`,
     };
   }
 }

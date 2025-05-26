@@ -25,8 +25,6 @@ export interface EntityMetadata {
   entityType: string;
   tableName: string;
   requiredFields: string[];
-  optionalFields: string[];
   uniqueFields: string[];
-  fieldValidators: Record<string, (value: unknown) => boolean>;
   columnMappings: Record<string, string>;
 }
