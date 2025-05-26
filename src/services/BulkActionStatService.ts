@@ -58,7 +58,6 @@ export class BulkActionStatService implements IService {
         actionId,
         totalRecords: stats.totalRecords,
         successfulRecords: stats.successfulRecords,
-        successRate: this.calculateSuccessRate(stats),
       });
 
       return stats;
@@ -204,7 +203,6 @@ export class BulkActionStatService implements IService {
       log.info('Bulk action statistics updated successfully', {
         actionId,
         updatedFields: Object.keys(updates),
-        newSuccessRate: this.calculateSuccessRate(updatedStats),
       });
 
       return updatedStats;
@@ -314,63 +312,6 @@ export class BulkActionStatService implements IService {
         error: error instanceof Error ? error.message : String(error),
         actionId,
         totalRecords,
-      });
-      throw error;
-    }
-  }
-
-  /**
-   * Delete bulk action statistics
-   */
-  public async deleteStats(actionId: string, traceId: string): Promise<void> {
-    if (!actionId) {
-      throw new ValidationError('Action ID is required');
-    }
-
-    const log = logger.withTrace(traceId);
-
-    log.info('Deleting bulk action statistics', { actionId });
-
-    try {
-      const deleted = await this.bulkActionStatRepository.deleteByActionId(actionId, traceId);
-
-      if (!deleted) {
-        throw new NotFoundError('Bulk action statistics not found');
-      }
-
-      log.info('Bulk action statistics deleted successfully', { actionId });
-    } catch (error) {
-      log.error('Failed to delete bulk action statistics', {
-        error: error instanceof Error ? error.message : String(error),
-        actionId,
-      });
-      throw error;
-    }
-  }
-
-  /**
-   * Check if statistics exist for action
-   */
-  public async statsExist(actionId: string, traceId: string): Promise<boolean> {
-    if (!actionId) {
-      throw new ValidationError('Action ID is required');
-    }
-
-    const log = logger.withTrace(traceId);
-
-    try {
-      const exists = await this.bulkActionStatRepository.existsByActionId(actionId, traceId);
-
-      log.debug('Bulk action statistics existence check', {
-        actionId,
-        exists,
-      });
-
-      return exists;
-    } catch (error) {
-      log.error('Failed to check bulk action statistics existence', {
-        error: error instanceof Error ? error.message : String(error),
-        actionId,
       });
       throw error;
     }
@@ -520,52 +461,6 @@ export class BulkActionStatService implements IService {
 
     if (!hasValidIncrement) {
       throw new ValidationError('At least one positive increment must be provided');
-    }
-  }
-
-  /**
-   * Calculate success rate percentage
-   */
-  private calculateSuccessRate(stats: IBulkActionStat): number {
-    if (stats.totalRecords === 0) return 0;
-    return Math.round((stats.successfulRecords / stats.totalRecords) * 100 * 100) / 100;
-  }
-
-  /**
-   * Validate statistics consistency
-   */
-  public async validateStatsConsistency(
-    actionId: string,
-    traceId: string
-  ): Promise<{
-    isConsistent: boolean;
-    errors: string[];
-  }> {
-    const log = logger.withTrace(traceId);
-
-    try {
-      const stats = await this.getStatsByActionId(actionId, traceId);
-      const bulkActionStat = new BulkActionStat(stats);
-
-      const errors = bulkActionStat.getConsistencyErrors();
-      const isConsistent = errors.length === 0;
-
-      log.debug('Statistics consistency validation completed', {
-        actionId,
-        isConsistent,
-        errorCount: errors.length,
-      });
-
-      return {
-        isConsistent,
-        errors,
-      };
-    } catch (error) {
-      log.error('Failed to validate statistics consistency', {
-        error: error instanceof Error ? error.message : String(error),
-        actionId,
-      });
-      throw error;
     }
   }
 }

@@ -460,25 +460,6 @@ export class ContactService implements IService {
       throw error;
     }
   }
-  /**
-   * Get contact statistics
-   */
-  public async getContactStatistics(traceId: string): Promise<Record<string, number>> {
-    const log = logger.withTrace(traceId);
-
-    try {
-      const stats = await this.contactRepository.getStatusStatistics(traceId);
-
-      log.debug('Contact statistics retrieved', { stats });
-
-      return stats;
-    } catch (error) {
-      log.error('Failed to get contact statistics', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    }
-  }
 
   /**
    * Find contacts by multiple emails (for deduplication)

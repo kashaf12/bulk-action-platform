@@ -36,33 +36,6 @@ export class PathGenerator {
   }
 
   /**
-   * Generate chunk path information for worker processing
-   */
-  public static generateChunkPathInfo(
-    accountId: string,
-    actionId: string,
-    jobId: string,
-    chunkIndex: number
-  ): ChunkPathInfo {
-    const basePath = this.generateChunksBasePath(accountId, actionId, jobId);
-    const chunkFileName = `chunk${chunkIndex}.csv`;
-    const chunkPath = `${basePath}/${chunkFileName}`;
-
-    return {
-      basePath,
-      chunkPath,
-      chunkFileName,
-    };
-  }
-
-  /**
-   * Generate processing directory path for temporary files
-   */
-  public static generateProcessingPath(accountId: string, actionId: string): string {
-    return `${this.BASE_PATH}/Accounts/${accountId}/Action/${actionId}/Processing`;
-  }
-
-  /**
    * Parse account ID and action ID from file path
    */
   public static parseFilePathInfo(filePath: string): {
@@ -100,23 +73,5 @@ export class PathGenerator {
    */
   public static isValidFilePath(filePath: string): boolean {
     return this.parseFilePathInfo(filePath) !== null;
-  }
-
-  /**
-   * Generate backup path for failed processing
-   */
-  public static generateBackupPath(originalPath: string, timestamp: Date): string {
-    const backupDir = originalPath.replace('/raw.csv', '/Backup');
-    const timestampStr = timestamp.toISOString().replace(/[:.]/g, '-');
-    return `${backupDir}/raw_${timestampStr}.csv`;
-  }
-
-  /**
-   * Generate archive path for completed processing
-   */
-  public static generateArchivePath(originalPath: string, timestamp: Date): string {
-    const archiveDir = originalPath.replace('/raw.csv', '/Archive');
-    const timestampStr = timestamp.toISOString().replace(/[:.]/g, '-');
-    return `${archiveDir}/raw_${timestampStr}.csv`;
   }
 }

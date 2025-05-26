@@ -8,7 +8,7 @@ import { BulkActionStatService } from '../services/BulkActionStatService';
 import minioManager from '../config/minio';
 import { logger } from '../utils/logger';
 import { ValidationError, DatabaseError } from '../utils/error';
-import { FileUploadResult, MinioUploadOptions } from '../types/storage';
+import { FileUploadResult } from '../types/storage';
 import {
   BulkActionCreateData,
   BulkActionType,

@@ -260,13 +260,6 @@ export class ChunkingService {
   }
 
   /**
-   * Get current processing progress
-   */
-  public getCurrentProgress(): ChunkingProgress {
-    return { ...this.currentProgress };
-  }
-
-  /**
    * Initialize processing components
    */
   private async initializeProcessors(
