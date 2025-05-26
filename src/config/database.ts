@@ -45,13 +45,7 @@ class Database {
    */
   public async connect(): Promise<void> {
     try {
-      this.pool = new Pool({
-        ...this.config,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 2000,
-        statement_timeout: 30000,
-        query_timeout: 30000,
-      });
+      this.pool = new Pool(this.config);
 
       // Handle pool errors
       this.pool.on('error', (err: Error) => {
@@ -232,23 +226,6 @@ class Database {
    */
   public isHealthy(): boolean {
     return this.isConnected && this.pool !== null;
-  }
-
-  /**
-   * Get current pool statistics
-   */
-  public getPoolStats(): {
-    totalCount: number;
-    idleCount: number;
-    waitingCount: number;
-  } | null {
-    if (!this.pool) return null;
-
-    return {
-      totalCount: this.pool.totalCount,
-      idleCount: this.pool.idleCount,
-      waitingCount: this.pool.waitingCount,
-    };
   }
 
   /**
