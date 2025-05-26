@@ -14,7 +14,7 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_contacts_email ON contacts(email);
 -- =====================================================
 
 -- Primary lookup indexes
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bulk_actions_action_id ON bulk_actions(action_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bulk_actions_id ON bulk_actions(id);
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bulk_actions_account_id ON bulk_actions(account_id);
 
 -- =====================================================

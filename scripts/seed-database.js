@@ -136,7 +136,7 @@ class DatabaseSeeder {
 
       const actionInsert = `
         INSERT INTO bulk_actions (
-          action_id, account_id, entity_type, action_type, status,
+          id, account_id, entity_type, action_type, status,
           total_entities, processed_entities, scheduled_at, started_at, completed_at,
           configuration, error_message, file_path, file_size,
           batch_size, retry_count, max_retries, priority

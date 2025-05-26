@@ -26,7 +26,6 @@ CREATE TABLE IF NOT EXISTS contacts (
 -- =====================================================
 CREATE TABLE IF NOT EXISTS bulk_actions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    action_id UUID UNIQUE NOT NULL DEFAULT uuid_generate_v4(),
     account_id VARCHAR(255) NOT NULL,
     entity_type VARCHAR(50) NOT NULL DEFAULT 'contact',
     action_type VARCHAR(50) NOT NULL DEFAULT 'bulk_update',
@@ -63,7 +62,7 @@ CREATE TABLE IF NOT EXISTS bulk_actions (
 -- =====================================================
 CREATE TABLE IF NOT EXISTS bulk_action_stats (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    action_id UUID NOT NULL REFERENCES bulk_actions(action_id) ON DELETE CASCADE,
+    action_id UUID NOT NULL REFERENCES bulk_actions(id) ON DELETE CASCADE,
 
     -- Counters
     total_records INTEGER DEFAULT 0,
