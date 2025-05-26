@@ -10,6 +10,10 @@ export interface DatabaseConfig {
   password: string;
   min: number;
   max: number;
+  idleTimeoutMillis: number;
+  connectionTimeoutMillis: number;
+  statement_timeout: number;
+  query_timeout: number;
 }
 
 export interface QueryResult<T = unknown> {

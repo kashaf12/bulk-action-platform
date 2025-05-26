@@ -26,13 +26,17 @@ class Database {
     const envConfig = configManager.getDatabaseConfig();
 
     return {
-      host: envConfig.host || 'localhost',
-      port: envConfig.port || 5432,
-      database: envConfig.database || 'bulk_action_platform',
-      user: envConfig.user || 'postgres',
-      password: envConfig.password || 'password',
-      min: envConfig.min || 2,
-      max: envConfig.max || 20,
+      host: envConfig.host,
+      port: envConfig.port,
+      database: envConfig.database,
+      user: envConfig.user,
+      password: envConfig.password,
+      min: envConfig.min,
+      max: envConfig.max,
+      idleTimeoutMillis: envConfig.idleTimeoutMillis,
+      connectionTimeoutMillis: envConfig.connectionTimeoutMillis,
+      statement_timeout: envConfig.statement_timeout,
+      query_timeout: envConfig.query_timeout,
     };
   }
 

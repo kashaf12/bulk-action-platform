@@ -21,6 +21,10 @@ const envSchema = z.object({
   DB_PASSWORD: z.string().default('password'),
   DB_POOL_MIN: z.coerce.number().int().min(0).default(2),
   DB_POOL_MAX: z.coerce.number().int().min(1).default(20),
+  DB_IDLE_TIMEOUT_MILLIS: z.coerce.number().int().min(0).default(30000),
+  DB_CONNECTION_TIMEOUT_MILLIS: z.coerce.number().int().min(0).default(2000),
+  DB_STATEMENT_TIMEOUT: z.coerce.number().int().min(0).default(30000),
+  DB_QUERY_TIMEOUT: z.coerce.number().int().min(0).default(30000),
 
   // Redis
   REDIS_HOST: z.string().default('localhost'),
@@ -148,6 +152,10 @@ class ConfigManager {
       password: this.config.DB_PASSWORD,
       min: this.config.DB_POOL_MIN,
       max: this.config.DB_POOL_MAX,
+      idleTimeoutMillis: this.config.DB_IDLE_TIMEOUT_MILLIS,
+      connectionTimeoutMillis: this.config.DB_CONNECTION_TIMEOUT_MILLIS,
+      statement_timeout: this.config.DB_STATEMENT_TIMEOUT,
+      query_timeout: this.config.DB_QUERY_TIMEOUT,
     };
   }
 
@@ -252,54 +260,6 @@ class ConfigManager {
       ingestionWorkers: this.config.INGESTION_WORKERS,
       chunkingWorkers: this.config.CHUNKING_WORKERS,
     };
-  }
-
-  /**
-   * Check if running in development mode
-   */
-  public isDevelopment(): boolean {
-    return this.config.NODE_ENV === 'development';
-  }
-
-  /**
-   * Check if running in production mode
-   */
-  public isProduction(): boolean {
-    return this.config.NODE_ENV === 'production';
-  }
-
-  /**
-   * Check if running in test mode
-   */
-  public isTest(): boolean {
-    return this.config.NODE_ENV === 'test';
-  }
-
-  /**
-   * Get environment name
-   */
-  public getEnvironment(): string {
-    return this.config.NODE_ENV;
-  }
-
-  /**
-   * Validate required environment variables for specific features
-   */
-  public validateFeatureRequirements(feature: string): void {
-    switch (feature) {
-      case 'loki':
-        if (!this.config.LOKI_HOST) {
-          throw new Error('LOKI_HOST is required for Loki logging');
-        }
-        break;
-      case 'redis':
-        if (!this.config.REDIS_HOST) {
-          throw new Error('REDIS_HOST is required for Redis features');
-        }
-        break;
-      default:
-        logger.warn('Unknown feature validation requested', { feature });
-    }
   }
 }
 
