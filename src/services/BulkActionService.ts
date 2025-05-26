@@ -558,7 +558,8 @@ export class BulkActionService implements IService {
     newStatus: BulkActionStatus
   ): void {
     const validTransitions: Record<BulkActionStatus, BulkActionStatus[]> = {
-      queued: ['processing', 'cancelled'],
+      queued: ['processing', 'cancelled', 'validating'],
+      validating: ['processing', 'cancelled', 'failed'],
       processing: ['completed', 'failed', 'cancelled'],
       completed: [], // Final state
       failed: ['queued'], // Can retry

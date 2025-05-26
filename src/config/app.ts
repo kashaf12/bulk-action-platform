@@ -28,6 +28,11 @@ const envSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   REDIS_DATABASE: z.coerce.number().int().min(0).default(0),
   REDIS_CONNECT_TIMEOUT: z.coerce.number().int().min(0).default(2000),
+  REDIS_MAX_RETRIES_PER_REQUEST: z.coerce.number().int().min(0).default(3),
+  REDIS_RETRY_DELAY_ON_FAILOVER: z.coerce.number().int().min(0).default(1000),
+  REDIS_KEEP_ALIVE: z.coerce.number().int().min(0).max(1).default(1),
+  REDIS_FAMILY: z.coerce.number().int().min(4).max(6).default(4),
+  REDIS_LAZY_CONNECT: z.coerce.boolean().default(true),
 
   // MinIO Configuration
   MINIO_ENDPOINT: z.string().default('localhost'),
@@ -156,6 +161,11 @@ class ConfigManager {
       password: this.config.REDIS_PASSWORD,
       database: this.config.REDIS_DATABASE,
       connectTimeout: this.config.REDIS_CONNECT_TIMEOUT,
+      maxRetriesPerRequest: this.config.REDIS_MAX_RETRIES_PER_REQUEST,
+      retryDelayOnFailover: this.config.REDIS_RETRY_DELAY_ON_FAILOVER,
+      lazyConnect: this.config.REDIS_LAZY_CONNECT,
+      family: this.config.REDIS_FAMILY,
+      keepAlive: this.config.REDIS_KEEP_ALIVE,
     };
   }
 

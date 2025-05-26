@@ -61,6 +61,134 @@ services:
         max-file: "3"
         labels: "service=api"
 
+  chunking-workers:
+    build:
+      context: .
+      dockerfile: docker/chunking.Dockerfile
+    environment:
+      - NODE_ENV=production
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-bulk_action_platform}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-password123}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      # MinIO Configuration
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME:-storage}
+      - MINIO_REGION=us-east-1
+      # Chunking Worker Configuration
+      - CHUNKING_WORKER_COUNT=${CHUNKING_WORKERS:-3}
+      - MAX_MEMORY_PER_WORKER=256
+      - TOTAL_MEMORY_LIMIT=1024
+      - AUTO_RESTART_WORKERS=true
+      - MAX_RESTART_ATTEMPTS=3
+      - HEALTH_CHECK_PORT=8001
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: ${CHUNKING_REPLICAS:-2}  # Run 2 instances of chunking service
+      resources:
+        limits:
+          memory: 1.5G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "node", "-e", "console.log('Chunking worker health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=chunking-workers"
+
+  processing-workers:
+    build:
+      context: .
+      dockerfile: docker/processing.Dockerfile
+    environment:
+      - NODE_ENV=production
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-bulk_action_platform}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-password123}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      # MinIO Configuration
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME:-storage}
+      - MINIO_REGION=us-east-1
+      # Processing Worker Configuration
+      - PROCESSING_WORKER_COUNT=${INGESTION_WORKERS:-5}
+      - CONCURRENCY_PER_WORKER=3
+      - BATCH_SIZE=1000
+      - JOB_TIMEOUT=300000
+      - MAX_MEMORY_PER_WORKER=256
+      - TOTAL_MEMORY_LIMIT=1280
+      - AUTO_RESTART_WORKERS=true
+      - MAX_RESTART_ATTEMPTS=3
+      - HEALTH_CHECK_PORT=8002
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      chunking-workers:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: ${PROCESSING_REPLICAS:-3}  # Run 3 instances of processing service
+      resources:
+        limits:
+          memory: 1.5G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "node", "-e", "console.log('Processing worker health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=processing-workers"
   postgres:
     image: postgres:15-alpine
     container_name: bulk-action-postgres
@@ -101,12 +229,13 @@ services:
       -c default_statistics_target=100
 
   redis:
-    image: redis/redis-stack-server:latest
+    image: redis/redis-stack:latest
     container_name: bulk-action-redis
     environment:
       - REDIS_ARGS=--requirepass ${REDIS_PASSWORD:-redis}
     ports:
       - "6379:6379"
+      - "8001:8001"
     volumes:
       - redis_data:/data
     restart: unless-stopped

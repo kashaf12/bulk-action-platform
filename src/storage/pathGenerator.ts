@@ -71,9 +71,8 @@ export class PathGenerator {
     fileType?: 'raw' | 'chunk' | 'processing';
   } | null {
     const pathRegex = new RegExp(
-      `^${this.BASE_PATH}/Accounts/([^/]+)/Action/([^/]+)/(raw\\.csv|Chunks/[^/]+/chunk\\d+\\.csv|Processing/.+)$`
+      `^${this.BASE_PATH}/Accounts/([^/]+)/Action/([^/]+)/(raw\\.csv|Chunks/[^/]+/chunk\\d+\\.csv|Chunks/processing/chunk_\\d+\\.csv|processing/.+)$`
     );
-
     const match = filePath.match(pathRegex);
     if (!match) {
       return null;

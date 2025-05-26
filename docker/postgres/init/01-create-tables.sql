@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS bulk_actions (
     action_type VARCHAR(50) NOT NULL DEFAULT 'bulk_update',
 
     -- Status and progress
-    status VARCHAR(20) DEFAULT 'queued' CHECK (status IN ('queued', 'processing', 'completed', 'failed', 'cancelled', 'scheduled')),
+    status VARCHAR(20) DEFAULT 'queued' CHECK (status IN ('queued', 'processing', 'completed', 'failed', 'cancelled', 'scheduled', 'validating')),
     total_entities INTEGER DEFAULT 0,
     processed_entities INTEGER DEFAULT 0,
 

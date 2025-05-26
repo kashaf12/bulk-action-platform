@@ -129,6 +129,7 @@ export class BulkActionStatService implements IService {
 
       // Validate entity consistency
       const consistencyErrors = statEntity.getConsistencyErrors();
+
       if (consistencyErrors.length > 0) {
         throw new ValidationError('Statistics data is inconsistent', consistencyErrors);
       }

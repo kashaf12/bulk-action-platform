@@ -22,6 +22,7 @@ export const entityTypeSchema = z.enum(['contact']); // we can expand this later
 export const bulkActionConfigurationSchema = z
   .object({
     deduplicate: z.boolean().default(false),
+    onConflict: z.enum(['skip', 'error', 'update']).default('skip'),
   })
   .passthrough(); // Allow additional properties
 
@@ -69,7 +70,10 @@ export const createBulkActionRequestSchema = z.object({
   entityType: entityTypeSchema,
   actionType: bulkActionTypeSchema,
   scheduledAt: timestampSchema.optional(),
-  configuration: bulkActionConfigurationSchema.default({}),
+  configuration: bulkActionConfigurationSchema.default({
+    deduplicate: false, // Default to false if not provided
+    onConflict: 'skip', // Default conflict resolution strategy
+  }),
 });
 
 // Export inferred types

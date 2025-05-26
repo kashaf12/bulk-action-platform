@@ -4,7 +4,13 @@
 
 import { IEntity } from '../base';
 
-export type BulkActionStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+export type BulkActionStatus =
+  | 'queued'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'validating';
 export type BulkActionType = 'bulk_update' | 'bulk_delete' | 'bulk_create';
 export type EntityType = 'contact' | 'company' | 'lead' | 'opportunity' | 'task';
 

@@ -9,12 +9,14 @@ import database from './config/database';
 import redis from './config/redis';
 import minioManager from './config/minio';
 
+import chunkingQueue from './queues/ChunkingQueue';
+
 const appConfig = configManager.getAppConfig();
 const PORT = appConfig.port;
 const NODE_ENV = appConfig.nodeEnv;
 
 /**
- * Start the server with proper initialization and cleanup
+ * Start the API server (HTTP only, no workers)
  */
 async function startServer(): Promise<void> {
   try {
@@ -22,6 +24,7 @@ async function startServer(): Promise<void> {
       port: PORT,
       environment: NODE_ENV,
       nodeVersion: process.version,
+      serverType: 'api',
     });
 
     // Initialize database connection
@@ -57,18 +60,31 @@ async function startServer(): Promise<void> {
       throw error;
     }
 
+    // Initialize chunking queue (for job enqueuing only)
+    try {
+      await chunkingQueue.initialize();
+      logger.info('Chunking queue initialized for job enqueuing');
+    } catch (error) {
+      logger.error('Chunking queue initialization failed', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      throw error;
+    }
+
     // Create and start Express app
     const app = createApp();
 
     const server = app.listen(PORT, () => {
-      logger.info('Server started successfully', {
+      logger.info('API server started successfully', {
         port: PORT,
         environment: NODE_ENV,
         processId: process.pid,
+        serverType: 'api',
         dependencies: {
           database: 'connected',
           redis: 'connected',
           minio: 'connected',
+          chunkingQueue: 'initialized',
         },
       });
     });
@@ -81,6 +97,11 @@ async function startServer(): Promise<void> {
         logger.info('HTTP server closed');
 
         try {
+          // Close chunking queue
+          logger.info('Closing chunking queue...');
+          await chunkingQueue.close();
+          logger.info('Chunking queue closed');
+
           // Close database connections
           await database.close();
           logger.info('Database connections closed');
@@ -93,10 +114,10 @@ async function startServer(): Promise<void> {
           await minioManager.close();
           logger.info('MinIO connections closed');
 
-          logger.info('Graceful shutdown completed');
+          logger.info('API server graceful shutdown completed');
           process.exit(0);
         } catch (error) {
-          logger.error('Error during shutdown', {
+          logger.error('Error during API server shutdown', {
             error: error instanceof Error ? error.message : 'Unknown error',
           });
           process.exit(1);
@@ -105,7 +126,7 @@ async function startServer(): Promise<void> {
 
       // Force shutdown after 30 seconds
       setTimeout(() => {
-        logger.error('Forced shutdown due to timeout');
+        logger.error('Forced API server shutdown due to timeout');
         process.exit(1);
       }, 30000);
     };
@@ -116,7 +137,7 @@ async function startServer(): Promise<void> {
 
     // Handle uncaught exceptions
     process.on('uncaughtException', error => {
-      logger.error('Uncaught exception', {
+      logger.error('Uncaught exception in API server', {
         error: error.message,
         stack: error.stack,
       });
@@ -125,19 +146,19 @@ async function startServer(): Promise<void> {
 
     // Handle unhandled promise rejections
     process.on('unhandledRejection', (reason, promise) => {
-      logger.error('Unhandled promise rejection', {
+      logger.error('Unhandled promise rejection in API server', {
         reason,
         promise,
       });
       process.exit(1);
     });
   } catch (error) {
-    logger.error('Failed to start server', {
+    logger.error('Failed to start API server', {
       error: error instanceof Error ? error.message : 'Unknown error',
     });
     process.exit(1);
   }
 }
 
-// Start the server
+// Start the API server
 startServer();

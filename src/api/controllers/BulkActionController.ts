@@ -7,6 +7,8 @@ import { FileUploadService } from '../../storage/fileUploadService';
 import { logger } from '../../utils/logger';
 import { NotFoundError, ValidationError } from '../../utils/error';
 import { idParamSchema, bulkActionQuerySchema, createBulkActionRequestSchema } from '../../schemas';
+import { ChunkingJobData } from '../../queues/types/ChunkingJob';
+import chunkingQueue from '../../queues/ChunkingQueue';
 
 /**
  * Controller for handling bulk action operations with MinIO file upload
@@ -92,11 +94,54 @@ export class BulkActionController extends BaseController {
           status: result.bulkAction.status,
         });
 
-        // TODO: Enqueue BullMQ job for processing (will be implemented later)
-        logger.info('Bulk action queued for processing', {
-          id: result.bulkAction.id,
+        // Enqueue BullMQ job for chunking
+        const chunkingJobData: ChunkingJobData = {
+          traceId: authenticatedRequest.traceId,
+          accountId: authenticatedRequest.accountId,
+          actionId: result.bulkAction.id,
+          createdAt: new Date().toISOString(),
+
+          // File information
           filePath: result.uploadResult.filePath,
-          note: 'BullMQ integration pending',
+          fileName: result.uploadResult.fileName,
+          fileSize: result.uploadResult.fileSize,
+          etag: result.uploadResult.etag,
+
+          // Action configuration
+          entityType: validatedBody.entityType,
+          actionType: validatedBody.actionType,
+          configuration: {
+            ...validatedBody.configuration,
+            deduplicate: validatedBody.configuration?.deduplicate ?? false,
+            onConflict: validatedBody.configuration?.onConflict ?? 'skip',
+            chunkSize: 1000, // Default chunk size as requested
+          },
+
+          // Processing context
+          estimatedEntityCount: result.bulkAction.totalEntities,
+          scheduledAt: validatedBody.scheduledAt,
+        };
+
+        // Enqueue chunking job
+        const chunkingJob = await chunkingQueue.addChunkingJob(
+          chunkingJobData,
+          {
+            priority: 10, // High priority for new uploads
+            attempts: 3,
+            backoff: { type: 'exponential' },
+            delay: validatedBody.scheduledAt
+              ? new Date(validatedBody.scheduledAt).getTime() - Date.now()
+              : 0,
+          },
+          authenticatedRequest.traceId
+        );
+
+        logger.info('Chunking job enqueued successfully', {
+          traceId: authenticatedRequest.traceId,
+          actionId: result.bulkAction.id,
+          jobId: chunkingJob.id,
+          scheduledAt: validatedBody.scheduledAt,
+          estimatedEntityCount: result.bulkAction.totalEntities,
         });
 
         this.success(
@@ -116,10 +161,12 @@ export class BulkActionController extends BaseController {
             },
             processing: {
               message: 'File uploaded successfully and queued for processing',
+              jobId: chunkingJob.id,
               estimatedProcessingTime: this.estimateProcessingTime(result.bulkAction.totalEntities),
+              queuePosition: await this.getQueuePosition(chunkingJob.id || ''),
             },
           },
-          'Bulk action created successfully',
+          'Bulk action created and queued for processing',
           201,
           authenticatedRequest.traceId
         );
@@ -491,5 +538,28 @@ export class BulkActionController extends BaseController {
 
     const endTime = bulkAction.completedAt ? new Date(bulkAction.completedAt) : new Date();
     return endTime.getTime() - new Date(bulkAction.startedAt).getTime();
+  }
+
+  /**
+   * Get queue position for a job (helper method)
+   */
+  private async getQueuePosition(jobId: string): Promise<number> {
+    try {
+      const job = await chunkingQueue.getJob(jobId, 'system');
+      if (!job) return 0;
+
+      // Get waiting jobs to determine position
+      const queue = chunkingQueue.getQueue();
+      const waitingJobs = await queue.getWaiting();
+
+      const position = waitingJobs.findIndex(waitingJob => waitingJob.id === jobId);
+      return position >= 0 ? position + 1 : 0;
+    } catch (error) {
+      logger.warn('Failed to get queue position', {
+        jobId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 0;
+    }
   }
 }
