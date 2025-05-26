@@ -4,3 +4,5 @@ logs
 uploads
 node_modules
 .env
+.DS_Store
+scripts/csv

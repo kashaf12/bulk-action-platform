@@ -459,10 +459,10 @@ export class ContactRepository extends BaseRepository<IContact> {
 
       for (const contact of contacts) {
         updateCases.push(
-          `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5})`
+          `($${paramIndex}::uuid, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3})`
         );
-        params.push(contact.email, contact.name, contact.age);
-        paramIndex += 6;
+        params.push(contact.id, contact.email, contact.name, contact.age);
+        paramIndex += 4;
       }
 
       const query = `
@@ -471,12 +471,13 @@ export class ContactRepository extends BaseRepository<IContact> {
           name = data.name,
           age = data.age::integer,
           updated_at = NOW()
-        FROM (VALUES ${updateCases.join(', ')}) AS data(email, name, age)
-        WHERE contacts.email = data.email
+        FROM (VALUES ${updateCases.join(', ')}) AS data(id, email, name, age)
+        WHERE contacts.id = data.id
         RETURNING contacts.*
       `;
 
       const result = await database.query(query, params);
+
       const updatedContacts = result.rows;
 
       // Find missing contacts (contacts that were not updated)

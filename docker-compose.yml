@@ -261,7 +261,7 @@ services:
       - DB_NAME=${DB_NAME:-bulk_action_platform}
       - DB_USER=${DB_USER:-postgres}
       - DB_PASSWORD=${DB_PASSWORD:-password123}
-      - SEED_CONTACTS=${SEED_CONTACTS:-100000}
+      - SEED_CONTACTS=${SEED_CONTACTS:-1000000}
       - SEED_ACCOUNTS=${SEED_ACCOUNTS:-10}
     depends_on:
       postgres:
