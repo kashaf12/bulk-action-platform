@@ -3,6 +3,7 @@ import bulkActionsRoutes from './bulkActions';
 import bulkActionStatsRoutes from './bulkActionStats';
 import healthRoutes from './health';
 import { logger } from '../../utils/logger';
+import config from '../../config/app';
 
 const router = Router();
 
@@ -19,8 +20,8 @@ router.get('/', (req: Request, res: Response) => {
     success: true,
     message: 'Bulk Action Platform API',
     data: {
-      version: process.env.npm_package_version || '1.0.0',
-      environment: process.env.NODE_ENV || 'development',
+      version: config.getNpmPackageVersion(),
+      environment: config.getEnvironment(),
       timestamp: new Date().toISOString(),
       endpoints: {
         bulkActions: '/bulk-actions',

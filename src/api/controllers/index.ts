@@ -5,12 +5,10 @@ import { BulkActionService } from '../../services/BulkActionService';
 import { BulkActionStatService } from '../../services/BulkActionStatService';
 import { BulkActionRepository } from '../../repositories/BulkActionRepository';
 import { BulkActionStatRepository } from '../../repositories/BulkActionStatRepository';
-import { ContactRepository } from '../../repositories/ContactRepository';
 
 // Initialize repositories
 const bulkActionRepository = new BulkActionRepository();
 const bulkActionStatRepository = new BulkActionStatRepository();
-const contactRepository = new ContactRepository();
 
 // Initialize services
 const bulkActionService = new BulkActionService(bulkActionRepository);

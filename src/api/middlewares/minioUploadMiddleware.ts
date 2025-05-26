@@ -25,14 +25,14 @@ interface MinioMulterFile extends Express.Multer.File {
  */
 const createMinioUpload = () => {
   const storage = createMinioStorage({
-    maxFileSize: processingConfig.maxFileSizeMB * 1024 * 1024,
+    maxFileSize: processingConfig.maxFileSizeMB,
     allowedMimeTypes: ['text/csv', 'application/csv', 'text/plain'],
   });
 
   return multer({
     storage,
     limits: {
-      fileSize: processingConfig.maxFileSizeMB * 1024 * 1024,
+      fileSize: processingConfig.maxFileSizeMB,
       files: 1,
       fields: 10,
       fieldNameSize: 100,

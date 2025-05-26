@@ -7,7 +7,7 @@ const contentLimitConfig = configManager.getContentLimitConfig();
 
 export const securityConfig = {
   // File upload limits
-  maxFileSize: processingConfig.maxFileSizeMB * 1024 * 1024, // e.g., 10MB
+  maxFileSize: processingConfig.maxFileSizeMB, // e.g., 10MB
   maxCsvRows: processingConfig.maxCsvRows, // e.g., 10000 rows
 
   // Rate limiting

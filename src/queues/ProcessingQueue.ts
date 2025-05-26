@@ -4,13 +4,7 @@
  */
 
 import { Queue, QueueEvents, Job, JobsOptions, RedisOptions } from 'bullmq';
-import {
-  ProcessingJobData,
-  ProcessingJobResult,
-  ProcessingJobOptions,
-  JobEvent,
-  QueueHealth,
-} from './types/ChunkingJob';
+import { ProcessingJobData, ProcessingJobResult, JobEvent, QueueHealth } from './types/ChunkingJob';
 import queueConfigManager from './config/queueConfig';
 import { logger } from '../utils/logger';
 import { EventEmitter } from 'events';
@@ -27,7 +21,7 @@ export class ProcessingQueue extends EventEmitter {
     super();
 
     // Get partition count from environment
-    this.partitionCount = parseInt(process.env.PROCESSING_WORKER_COUNT || '5');
+    this.partitionCount = configManager.getWorkerConfig().processingWorkerCount;
 
     logger.info('Initializing ProcessingQueue with partitions', {
       partitionCount: this.partitionCount,

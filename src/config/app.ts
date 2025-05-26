@@ -50,6 +50,7 @@ const envSchema = z.object({
   // Worker Configuration
   INGESTION_WORKERS: z.coerce.number().int().min(1).max(100).default(5),
   CHUNKING_WORKERS: z.coerce.number().int().min(1).max(50).default(3),
+  PROCESSING_WORKER_COUNT: z.coerce.number().int().min(1).max(100).default(5),
 
   // Rate Limiting
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).default(60000), // 1 minute
@@ -192,7 +193,7 @@ class ConfigManager {
    */
   public getProcessingConfig() {
     return {
-      maxFileSizeMB: this.config.MAX_FILE_SIZE_MB,
+      maxFileSizeMB: this.config.MAX_FILE_SIZE_MB * 1024 * 1024,
       maxCsvRows: this.config.MAX_CSV_ROWS,
       tempDir: this.config.TEMP_DIR,
       defaultBatchSize: this.config.DEFAULT_BATCH_SIZE,
@@ -259,7 +260,24 @@ class ConfigManager {
     return {
       ingestionWorkers: this.config.INGESTION_WORKERS,
       chunkingWorkers: this.config.CHUNKING_WORKERS,
+      processingWorkerCount: this.config.PROCESSING_WORKER_COUNT,
     };
+  }
+
+  public isDevelopment(): boolean {
+    return this.config.NODE_ENV === 'development';
+  }
+
+  public isProduction(): boolean {
+    return this.config.NODE_ENV === 'production';
+  }
+
+  public getNpmPackageVersion(): string {
+    return process.env.npm_package_version || '1.0.0';
+  }
+
+  public getEnvironment(): string {
+    return this.config.NODE_ENV;
   }
 }
 

@@ -70,7 +70,6 @@ export interface WorkerManagerMetrics {
   // Resource usage
   totalMemoryUsage: number;
   averageMemoryUsage: number;
-  cpuUsage: number;
 
   // Performance metrics
   totalJobsProcessed: number;
@@ -225,66 +224,6 @@ export class WorkerManager extends EventEmitter {
   }
 
   /**
-   * Scale workers up or down
-   */
-  public async scaleWorkers(type: WorkerType, targetCount: number): Promise<void> {
-    if (this.status !== WorkerManagerStatus.RUNNING) {
-      throw new Error(`Cannot scale workers from status: ${this.status}`);
-    }
-
-    const currentWorkers = this.getWorkersByType(type);
-    const currentCount = currentWorkers.length;
-
-    if (targetCount === currentCount) {
-      logger.debug('No scaling needed', { type, currentCount, targetCount });
-      return;
-    }
-
-    this.status = WorkerManagerStatus.SCALING;
-
-    logger.info('Scaling workers', {
-      type,
-      currentCount,
-      targetCount,
-      direction: targetCount > currentCount ? 'up' : 'down',
-    });
-
-    try {
-      if (targetCount > currentCount) {
-        // Scale up
-        const workersToAdd = targetCount - currentCount;
-        await this.spawnWorkers(type, workersToAdd);
-      } else {
-        // Scale down
-        const workersToRemove = currentCount - targetCount;
-        await this.removeWorkers(type, workersToRemove);
-      }
-
-      this.status = WorkerManagerStatus.RUNNING;
-
-      logger.info('Worker scaling completed', {
-        type,
-        newCount: this.getWorkersByType(type).length,
-        targetCount,
-      });
-
-      this.emit('scaled', { type, oldCount: currentCount, newCount: targetCount });
-    } catch (error) {
-      this.status = WorkerManagerStatus.ERROR;
-
-      logger.error('Worker scaling failed', {
-        error: error instanceof Error ? error.message : String(error),
-        type,
-        currentCount,
-        targetCount,
-      });
-
-      this.emit('error', error);
-      throw error;
-    }
-  }
-
-  /**
    * Restart an unhealthy worker
    */
   public async restartWorker(workerId: string): Promise<void> {
@@ -391,7 +330,6 @@ export class WorkerManager extends EventEmitter {
 
       totalMemoryUsage,
       averageMemoryUsage,
-      cpuUsage: this.getCurrentCpuUsage(),
 
       totalJobsProcessed,
       totalJobsSuccessful,
@@ -403,21 +341,6 @@ export class WorkerManager extends EventEmitter {
 
       lastUpdated: new Date().toISOString(),
     };
-  }
-
-  /**
-   * Get worker information
-   */
-  public getWorkerInfo(workerId?: string): WorkerInfo | WorkerInfo[] {
-    if (workerId) {
-      const worker = this.workers.get(workerId);
-      if (!worker) {
-        throw new Error(`Worker not found: ${workerId}`);
-      }
-      return worker;
-    }
-
-    return Array.from(this.workers.values());
   }
 
   /**
@@ -582,29 +505,6 @@ export class WorkerManager extends EventEmitter {
 
     worker.on('jobProgress', data => {
       this.emit('jobProgress', { workerId, ...data });
-    });
-  }
-
-  /**
-   * Remove workers of specified type
-   */
-  private async removeWorkers(type: WorkerType, count: number): Promise<void> {
-    const workers = this.getWorkersByType(type);
-    const workersToRemove = workers.slice(0, count);
-
-    logger.info('Removing workers', {
-      type,
-      count,
-      workersToRemove: workersToRemove.map(w => w.id),
-    });
-
-    const removePromises = workersToRemove.map(worker => this.removeWorker(worker.id));
-    await Promise.all(removePromises);
-
-    logger.info('Workers removed successfully', {
-      type,
-      count,
-      remainingWorkers: this.getWorkersByType(type).length,
     });
   }
 
@@ -870,14 +770,6 @@ export class WorkerManager extends EventEmitter {
 
     return `${type}-${hostname}-${timestamp}-${random}`;
   }
-
-  /**
-   * Get current CPU usage (placeholder)
-   */
-  private getCurrentCpuUsage(): number {
-    // This is a placeholder - actual CPU monitoring would require additional libraries
-    return 0;
-  }
 }
 
 // Export utility functions
@@ -903,40 +795,6 @@ export const WorkerManagerUtils = {
       maxRestartAttempts: 3,
       gracefulShutdownTimeout: 30000,
       forceShutdownDelay: 5000,
-    };
-  },
-
-  /**
-   * Calculate optimal worker count based on available resources
-   */
-  calculateOptimalWorkerCount(
-    availableMemoryMB: number,
-    avgMemoryPerWorkerMB: number = 256,
-    cpuCores: number = os.cpus().length
-  ): number {
-    const memoryBasedCount = Math.floor(availableMemoryMB / avgMemoryPerWorkerMB);
-    const cpuBasedCount = cpuCores * 2; // 2x CPU cores as a heuristic
-
-    return Math.min(memoryBasedCount, cpuBasedCount, 10); // Cap at 10 workers
-  },
-
-  /**
-   * Estimate memory requirements
-   */
-  estimateMemoryRequirements(
-    chunkingWorkers: number,
-    processingWorkers: number,
-    memoryPerWorker: number = 256
-  ): {
-    totalMemoryMB: number;
-    recommendedSystemMemoryMB: number;
-  } {
-    const totalMemoryMB = (chunkingWorkers + processingWorkers) * memoryPerWorker;
-    const recommendedSystemMemoryMB = totalMemoryMB * 1.5; // 50% overhead for system
-
-    return {
-      totalMemoryMB,
-      recommendedSystemMemoryMB,
     };
   },
 };

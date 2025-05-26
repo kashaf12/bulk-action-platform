@@ -15,6 +15,8 @@ import {
   ValidationError,
 } from '../../utils/error';
 
+import config from '../../config/app';
+
 /**
  * Centralized error handling middleware
  * Converts errors to standardized API responses
@@ -71,7 +73,7 @@ export const errorHandlerMiddleware = (
       res,
       'Database operation failed',
       500,
-      process.env.NODE_ENV === 'development' ? { originalError: error.message } : undefined,
+      config.isDevelopment() ? { originalError: error.message } : undefined,
       traceId
     );
     return;
@@ -111,9 +113,7 @@ export const errorHandlerMiddleware = (
     res,
     'Internal server error',
     500,
-    process.env.NODE_ENV === 'development'
-      ? { originalError: error.message, stack: error.stack }
-      : undefined,
+    config.isDevelopment() ? { originalError: error.message, stack: error.stack } : undefined,
     traceId
   );
 };

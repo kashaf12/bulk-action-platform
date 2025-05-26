@@ -241,7 +241,6 @@ export class ChunkingWorker extends EventEmitter {
       ...this.metrics,
       uptime: this.getUptime(),
       memoryUsage: this.getCurrentMemoryUsage(),
-      cpuUsage: this.getCurrentCpuUsage(),
     };
   }
 
@@ -904,14 +903,6 @@ export class ChunkingWorker extends EventEmitter {
   private getCurrentMemoryUsage(): number {
     const usage = process.memoryUsage();
     return Math.round(usage.heapUsed / 1024 / 1024);
-  }
-
-  /**
-   * Get current CPU usage (placeholder - would need actual implementation)
-   */
-  private getCurrentCpuUsage(): number {
-    // This is a placeholder - actual CPU monitoring would require additional libraries
-    return 0;
   }
 
   /**

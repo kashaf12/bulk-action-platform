@@ -11,6 +11,7 @@ import { PathGenerator } from './pathGenerator';
 import { logger } from '../utils/logger';
 import { AuthenticatedRequest } from '../api/middlewares/authenticationMiddleware';
 import { v4 as uuidv4 } from 'uuid';
+import config from '../config/app';
 
 interface MinioFile extends Express.Multer.File {
   etag: string;
@@ -301,7 +302,7 @@ export function createMinioStorage(options?: {
   maxFileSize?: number;
   allowedMimeTypes?: string[];
 }): MinioStorageEngine {
-  const maxFileSize = parseInt(process.env.MAX_FILE_SIZE_MB || '100') * 1024 * 1024;
+  const maxFileSize = config.getProcessingConfig().maxFileSizeMB;
 
   return new MinioStorageEngine({
     maxFileSize,
