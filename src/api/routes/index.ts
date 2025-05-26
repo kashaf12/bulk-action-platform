@@ -58,16 +58,9 @@ router.get('/docs', (req: Request, res: Response) => {
           create: 'POST /bulk-actions',
           list: 'GET /bulk-actions',
           get: 'GET /bulk-actions/{id}',
-          stats: 'GET /bulk-actions/{id}/stats',
-          cancel: 'PUT /bulk-actions/{id}/cancel',
         },
         bulkActionStats: {
           get: 'GET /bulk-actions/{id}/stats',
-          initialize: 'POST /bulk-actions/{id}/stats/initialize',
-          increment: 'PUT /bulk-actions/{id}/stats/increment',
-          validate: 'GET /bulk-actions/{id}/stats/validate',
-          delete: 'DELETE /bulk-actions/{id}/stats',
-          exists: 'GET /bulk-actions/{id}/stats/exists',
         },
         health: {
           basic: 'GET /health',
