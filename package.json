@@ -31,7 +31,6 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "@types/minio": "^7.1.0",
     "bullmq": "^5.53.0",
     "compression": "^1.8.0",
     "cors": "^2.8.5",
@@ -49,6 +48,7 @@
     "zod": "^3.25.28"
   },
   "devDependencies": {
+    "@types/minio": "^7.1.0",
     "@types/compression": "^1.8.0",
     "@types/cors": "^2.8.18",
     "@types/express": "^5.0.2",

@@ -1,31 +1,53 @@
-FROM node:18-alpine
+# Multi-stage build for Node.js API
+FROM node:18-alpine AS builder
 
-# Set working directory
+# Install build dependencies
+RUN apk add --no-cache python3 make g++
+
 WORKDIR /app
 
 # Copy package files
-COPY package.json package-lock.json ./
+COPY package*.json ./
+COPY tsconfig.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install all dependencies (including dev dependencies for building)
+RUN npm ci
 
 # Copy source code
 COPY src/ ./src/
+# COPY dist/ ./dist/
 
 # Build TypeScript
 RUN npm run build
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S worker -u 1001
+# Production stage
+FROM node:18-alpine AS production
 
-# Change ownership of the app directory
-RUN chown -R worker:nodejs /app
+# Install curl for health checks
+RUN apk add --no-cache curl
+
+# Create app user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S worker -u 1001
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install only production dependencies
+RUN npm ci --only=production && npm cache clean --force
+
+# Copy built application from builder stage
+COPY --from=builder /app/dist ./dist
+
+
+# Switch to non-root user
 USER worker
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD node -e "console.log('Processing worker health check')" || exit 1
+    CMD node -e "console.log('Chunking worker health check')" || exit 1
 
 # Expose health check port (optional)
 EXPOSE 8002
