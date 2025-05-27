@@ -70,10 +70,7 @@ export const createBulkActionRequestSchema = z.object({
   entityType: entityTypeSchema,
   actionType: bulkActionTypeSchema,
   scheduledAt: timestampSchema.optional(),
-  configuration: bulkActionConfigurationSchema.default({
-    deduplicate: false, // Default to false if not provided
-    onConflict: 'skip', // Default conflict resolution strategy
-  }),
+  deduplicate: z.string().default('false'),
 });
 
 // Export inferred types

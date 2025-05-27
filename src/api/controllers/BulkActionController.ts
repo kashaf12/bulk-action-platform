@@ -40,6 +40,8 @@ export class BulkActionController extends BaseController {
       // Validate request body
       const validatedBody = createBulkActionRequestSchema.parse(authenticatedRequest.body);
 
+      const deduplicate = validatedBody.deduplicate === 'true';
+
       // Validate MinIO file upload (set by minioUploadMiddleware)
       const minioFileInfo = (authenticatedRequest as any).minioFileInfo;
       if (!minioFileInfo) {
@@ -71,7 +73,7 @@ export class BulkActionController extends BaseController {
             entityType: validatedBody.entityType,
             actionType: validatedBody.actionType,
             configuration: {
-              ...validatedBody.configuration,
+              deduplicate,
               uploadMetadata: {
                 originalFileName: minioFileInfo.originalName,
                 uploadedAt: new Date().toISOString(),
@@ -111,9 +113,7 @@ export class BulkActionController extends BaseController {
           entityType: validatedBody.entityType,
           actionType: validatedBody.actionType,
           configuration: {
-            ...validatedBody.configuration,
-            deduplicate: validatedBody.configuration?.deduplicate ?? false,
-            onConflict: validatedBody.configuration?.onConflict ?? 'skip',
+            deduplicate,
             chunkSize: 1000, // Default chunk size as requested
           },
 
