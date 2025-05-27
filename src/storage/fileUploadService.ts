@@ -45,6 +45,7 @@ export class FileUploadService {
   ): Promise<{
     bulkAction: any;
     uploadResult: FileUploadResult;
+    estimatedEntities: number;
   }> {
     const log = logger.withTrace(traceId);
 
@@ -94,7 +95,6 @@ export class FileUploadService {
           fileSize: request.fileSize,
           contentType: request.contentType,
           etag: request.etag,
-          estimatedEntities,
         },
       };
 
@@ -139,6 +139,7 @@ export class FileUploadService {
       return {
         bulkAction,
         uploadResult,
+        estimatedEntities,
       };
     } catch (error) {
       log.error('Failed to process file upload', {

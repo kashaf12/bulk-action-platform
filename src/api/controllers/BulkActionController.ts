@@ -118,7 +118,7 @@ export class BulkActionController extends BaseController {
           },
 
           // Processing context
-          estimatedEntityCount: result.bulkAction?.configuration?.estimatedEntities || 0,
+          estimatedEntityCount: result.estimatedEntities || 0,
           scheduledAt: validatedBody.scheduledAt,
         };
 
@@ -141,7 +141,7 @@ export class BulkActionController extends BaseController {
           actionId: result.bulkAction.id,
           jobId: chunkingJob.id,
           scheduledAt: validatedBody.scheduledAt,
-          estimatedEntityCount: result.bulkAction?.configuration?.estimatedEntities || 0,
+          estimatedEntityCount: result.estimatedEntities || 0,
         });
 
         this.success(
@@ -149,8 +149,6 @@ export class BulkActionController extends BaseController {
           {
             id: result.bulkAction.id,
             status: result.bulkAction.status,
-            totalEntities: 0,
-            estimatedEntities: result.bulkAction.configuration?.estimatedEntities || 0,
             scheduledAt: result.bulkAction.scheduledAt,
             createdAt: result.bulkAction.createdAt,
             file: {
@@ -161,7 +159,7 @@ export class BulkActionController extends BaseController {
               uploadedAt: result.uploadResult.uploadedAt,
             },
             processing: {
-              message: 'File uploaded successfully and queued for processing',
+              message: 'File uploaded successfully and queued for chunking',
               jobId: chunkingJob.id,
             },
           },

@@ -209,9 +209,11 @@ export class ChunkingService {
       // Stage 4: Update bulk action statistics
       await this.updateBulkActionStatistics(actionId, traceId);
 
+      const csvStats = this.csvReader.getStreamStats();
+
       // Update bulk action status to 'processing' (ready for ingestion workers)
       await this.updateBulkActionStatus(actionId, 'processing', undefined, traceId, {
-        totalEntities: chunkingResult.totalRecords,
+        totalEntities: csvStats.totalRows,
       });
 
       const result = this.createSuccessResult(actionId, chunkingResult);
@@ -287,7 +289,6 @@ export class ChunkingService {
       config.strictValidation
     );
     this.validator = new CSVValidator(validationConfig);
-
     // Initialize deduplication engine
     const deduplicationConfig: DeduplicationConfig = DeduplicationUtils.createDefaultConfig(
       config.enableDeduplication
@@ -561,7 +562,7 @@ export class ChunkingService {
         {
           actionId,
           totalRecords: csvStats.totalRows,
-          successfulRecords: validationStats.validRows,
+          successfulRecords: 0, // setting it to 0 as we don't track successful records in this context we'll be doing it in processing worker
           failedRecords: validationStats.invalidRows,
           skippedRecords: deduplicationStats.skippedRows,
         },

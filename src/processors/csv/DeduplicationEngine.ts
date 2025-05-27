@@ -512,7 +512,7 @@ export const DeduplicationUtils = {
     return {
       enabled,
       strategy: DeduplicationStrategy.KEEP_FIRST,
-      keyField: 'email',
+      keyField: 'email', //hardcoded default key field
       caseInsensitive: true,
       trimWhitespace: true,
       normalizeKeys: true,
