@@ -90,7 +90,7 @@ export class BulkActionController extends BaseController {
           accountId: authenticatedRequest.accountId,
           id: result.bulkAction.id,
           filePath: result.uploadResult.filePath,
-          totalEntities: result.bulkAction.totalEntities,
+          totalEntities: result.bulkAction?.totalEntities || 0,
           status: result.bulkAction.status,
         });
 
@@ -118,7 +118,7 @@ export class BulkActionController extends BaseController {
           },
 
           // Processing context
-          estimatedEntityCount: result.bulkAction.totalEntities,
+          estimatedEntityCount: result.bulkAction?.totalEntities || 0,
           scheduledAt: validatedBody.scheduledAt,
         };
 
@@ -141,7 +141,7 @@ export class BulkActionController extends BaseController {
           actionId: result.bulkAction.id,
           jobId: chunkingJob.id,
           scheduledAt: validatedBody.scheduledAt,
-          estimatedEntityCount: result.bulkAction.totalEntities,
+          estimatedEntityCount: result.bulkAction?.totalEntities || 0,
         });
 
         this.success(
@@ -149,7 +149,7 @@ export class BulkActionController extends BaseController {
           {
             id: result.bulkAction.id,
             status: result.bulkAction.status,
-            totalEntities: result.bulkAction.totalEntities,
+            totalEntities: result.bulkAction?.totalEntities || 0,
             scheduledAt: result.bulkAction.scheduledAt,
             createdAt: result.bulkAction.createdAt,
             file: {

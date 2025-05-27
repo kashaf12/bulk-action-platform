@@ -27,6 +27,7 @@ export interface CreateBulkActionRequest {
   actionType: BulkActionType;
   scheduledAt?: Date;
   configuration?: Record<string, unknown>;
+  totalEntities?: number;
 }
 
 export interface BulkActionListOptions extends PaginationParams {
@@ -152,12 +153,6 @@ export class BulkActionService implements IService {
     });
 
     try {
-      // Check rate limits
-      // await this.checkRateLimits(request.accountId, traceId);
-
-      // Check concurrent action limits
-      // await this.checkConcurrentLimits(request.accountId, traceId);
-
       // Create bulk action entity
       const id = request.id;
       const bulkActionData: BulkActionCreateData = {
@@ -166,7 +161,7 @@ export class BulkActionService implements IService {
         entityType: request.entityType,
         actionType: request.actionType,
         status: 'queued',
-        totalEntities: 0,
+        totalEntities: request.totalEntities || 0,
         processedEntities: 0,
         scheduledAt: request.scheduledAt,
         configuration: request.configuration || {},
@@ -174,18 +169,8 @@ export class BulkActionService implements IService {
 
       const bulkAction = new BulkAction(bulkActionData as IBulkAction);
 
-      // Validate entity
-      const validation = BulkAction.validate(bulkAction.toObject());
-
-      // if (!validation.isValid) {
-      //   throw new ValidationError('Invalid bulk action data', validation.errors);
-      // }
-
       // Save to database
       const createdBulkAction = await this.bulkActionRepository.create(bulkAction, traceId);
-
-      // Update rate limit counter
-      // await this.updateRateLimitCounter(request.accountId, traceId);
 
       log.info('Bulk action created successfully', {
         id: createdBulkAction.id,

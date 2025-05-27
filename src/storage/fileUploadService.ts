@@ -106,9 +106,12 @@ export class FileUploadService {
           actionType: request.actionType,
           scheduledAt: request.scheduledAt,
           configuration: bulkActionData.configuration,
+          totalEntities: estimatedEntities,
         },
         traceId
       );
+
+      bulkAction.totalEntities = estimatedEntities;
 
       if (!bulkAction?.id) {
         throw new DatabaseError('Failed to create bulk action in database');
