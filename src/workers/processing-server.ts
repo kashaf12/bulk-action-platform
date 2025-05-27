@@ -22,21 +22,18 @@ import { logger } from '../utils/logger';
 import configManager from '../config/app';
 import { v4 as uuidv4 } from 'uuid';
 import os from 'os';
-import { Logger } from 'winston';
 
 export interface ProcessingWorkerServerConfig extends BaseWorkerServerConfig {
-  workerCount: number;
-  maxMemoryPerWorker: number;
-  totalMemoryLimit: number;
-  concurrencyPerWorker: number;
+  partitionId: number;
   batchSize: number;
   jobTimeout: number;
+  maxMemoryLimit: number;
   maxRestartAttempts: number;
 }
 
 export interface ProcessingWorkerInfo {
   id: string;
-  partitionId: number; // Added partition ID
+  partitionId: number;
   status: 'idle' | 'processing' | 'error' | 'stopped';
   startTime: string;
   jobsProcessed: number;
@@ -52,12 +49,13 @@ export interface ProcessingWorkerInfo {
   };
   memoryUsage: number;
   isHealthy: boolean;
-  queueName: string; // Added queue name for debugging
+  queueName: string;
 }
 
 export class ProcessingWorkerServer extends BaseWorkerServer {
   private processingQueue: ProcessingQueue | null = null;
-  private workers: Map<string, { worker: Worker; info: ProcessingWorkerInfo }> = new Map();
+  private worker: Worker<ProcessingJobData, ProcessingJobResult> | null = null;
+  private workerInfo: ProcessingWorkerInfo;
   private processingWorkerConfig: ProcessingWorkerServerConfig;
 
   // Services
@@ -71,6 +69,20 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
 
     super(mergedConfig);
     this.processingWorkerConfig = mergedConfig;
+
+    // Initialize worker info
+    this.workerInfo = {
+      id: this.config.workerId,
+      partitionId: this.processingWorkerConfig.partitionId,
+      status: 'idle',
+      startTime: new Date().toISOString(),
+      jobsProcessed: 0,
+      jobsSuccessful: 0,
+      jobsFailed: 0,
+      memoryUsage: 0,
+      isHealthy: true,
+      queueName: '',
+    };
 
     // Initialize services
     this.initializeServices();
@@ -96,15 +108,25 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
     try {
       logger.info('Initializing processing worker components', {
         workerId: this.config.workerId,
-        workerCount: this.processingWorkerConfig.workerCount,
-        concurrencyPerWorker: this.processingWorkerConfig.concurrencyPerWorker,
+        partitionId: this.processingWorkerConfig.partitionId,
       });
 
       // Initialize processing queue
       this.processingQueue = new ProcessingQueue();
       await this.processingQueue.initialize();
-      logger.info('Processing queue initialized for worker processing', {
-        partitionCount: this.processingQueue.getPartitionCount(),
+
+      const partitionCount = this.processingQueue.getPartitionCount();
+
+      // Validate partition ID
+      if (this.processingWorkerConfig.partitionId >= partitionCount) {
+        throw new Error(
+          `Invalid partition ID: ${this.processingWorkerConfig.partitionId}. Available partitions: 0-${partitionCount - 1}`
+        );
+      }
+
+      logger.info('Processing queue initialized for single partition worker', {
+        partitionId: this.processingWorkerConfig.partitionId,
+        totalPartitions: partitionCount,
       });
 
       logger.info('Processing worker components initialized successfully');
@@ -112,13 +134,14 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
       logger.error('Failed to initialize processing worker components', {
         error: error instanceof Error ? error.message : String(error),
         workerId: this.config.workerId,
+        partitionId: this.processingWorkerConfig.partitionId,
       });
       throw error;
     }
   }
 
   /**
-   * Start processing workers - each worker bound to specific partition
+   * Start single partition processing worker
    */
   protected async startWorkers(): Promise<void> {
     if (!this.processingQueue) {
@@ -126,142 +149,68 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
     }
 
     try {
-      const partitionCount = this.processingQueue.getPartitionCount();
+      const partitionId = this.processingWorkerConfig.partitionId;
 
-      // Ensure worker count matches partition count
-      if (this.processingWorkerConfig.workerCount !== partitionCount) {
-        logger.warn('Worker count does not match partition count, adjusting', {
-          configuredWorkerCount: this.processingWorkerConfig.workerCount,
-          partitionCount,
-        });
-        this.processingWorkerConfig.workerCount = partitionCount;
-      }
-
-      logger.info('Starting processing workers with partition binding', {
+      logger.info('Starting single partition processing worker', {
         workerId: this.config.workerId,
-        workerCount: this.processingWorkerConfig.workerCount,
-        partitionCount,
-        concurrencyPerWorker: this.processingWorkerConfig.concurrencyPerWorker,
+        partitionId,
       });
 
-      // Start workers - each bound to specific partition
-      const startPromises: Promise<void>[] = [];
-      for (
-        let partitionId = 0;
-        partitionId < this.processingWorkerConfig.workerCount;
-        partitionId++
-      ) {
-        startPromises.push(this.startPartitionWorker(partitionId));
-      }
-
-      await Promise.all(startPromises);
-
-      logger.info('Processing workers started successfully with partition binding', {
-        workerId: this.config.workerId,
-        totalWorkers: this.workers.size,
-        healthyWorkers: this.getHealthyWorkerCount(),
-        partitionBindings: Array.from(this.workers.values()).map(({ info }) => ({
-          workerId: info.id,
-          partitionId: info.partitionId,
-          queueName: info.queueName,
-        })),
-      });
-    } catch (error) {
-      logger.error('Failed to start processing workers', {
-        error: error instanceof Error ? error.message : String(error),
-        workerId: this.config.workerId,
-      });
-      throw error;
-    }
-  }
-
-  /**
-   * Start a single processing worker bound to specific partition
-   */
-  private async startPartitionWorker(partitionId: number): Promise<void> {
-    if (!this.processingQueue) {
-      throw new Error('Processing queue not initialized');
-    }
-
-    const workerId = `${this.config.workerId}-partition-${partitionId}`;
-
-    try {
       // Get partition-specific queue
       const partitionQueue = this.processingQueue.getPartitionQueue(partitionId);
       const queueName = partitionQueue.name;
 
-      logger.info('Starting partition worker', {
-        workerId,
+      // Update worker info
+      this.workerInfo.queueName = queueName;
+
+      logger.info('Creating worker for partition', {
+        workerId: this.config.workerId,
         partitionId,
         queueName,
-        concurrency: this.processingWorkerConfig.concurrencyPerWorker,
       });
 
-      // Create worker info
-      const workerInfo: ProcessingWorkerInfo = {
-        id: workerId,
-        partitionId,
-        status: 'idle',
-        startTime: new Date().toISOString(),
-        jobsProcessed: 0,
-        jobsSuccessful: 0,
-        jobsFailed: 0,
-        memoryUsage: 0,
-        isHealthy: true,
+      // Create single BullMQ worker bound to specific partition queue
+      this.worker = new Worker<ProcessingJobData, ProcessingJobResult>(
         queueName,
-      };
-
-      // Create BullMQ worker bound to specific partition queue
-      const worker = new Worker<ProcessingJobData, ProcessingJobResult>(
-        queueName, // Worker only listens to this specific partition queue
-        this.createJobProcessor(workerId, partitionId),
+        this.createJobProcessor(),
         {
           connection: queueConfigManager.getConnectionOptions(),
-          concurrency: this.processingWorkerConfig.concurrencyPerWorker,
           maxStalledCount: 3,
           stalledInterval: 30000,
+          removeOnComplete: { count: 10 },
+          removeOnFail: { count: 5 },
         }
       );
 
       // Setup worker event listeners
-      this.setupWorkerEventListeners(workerId, partitionId, worker, workerInfo);
+      this.setupWorkerEventListeners();
 
-      // Store worker
-      this.workers.set(workerId, { worker, info: workerInfo });
-
-      logger.info('Partition worker started successfully', {
-        workerId,
+      logger.info('Single partition processing worker started successfully', {
+        workerId: this.config.workerId,
         partitionId,
         queueName,
-        concurrency: this.processingWorkerConfig.concurrencyPerWorker,
       });
     } catch (error) {
-      logger.error('Failed to start partition worker', {
+      logger.error('Failed to start single partition processing worker', {
         error: error instanceof Error ? error.message : String(error),
-        workerId,
-        partitionId,
+        workerId: this.config.workerId,
+        partitionId: this.processingWorkerConfig.partitionId,
       });
       throw error;
     }
   }
 
   /**
-   * Create job processor function for a partition-specific worker
+   * Create job processor function for this partition worker
    */
-  private createJobProcessor(workerId: string, partitionId: number) {
+  private createJobProcessor() {
     return async (job: any): Promise<ProcessingJobResult> => {
       const startTime = Date.now();
-      const workerEntry = this.workers.get(workerId);
-
-      if (!workerEntry) {
-        throw new Error(`Worker not found: ${workerId}`);
-      }
-
-      const { info: workerInfo } = workerEntry;
+      const partitionId = this.processingWorkerConfig.partitionId;
 
       // Update worker status
-      workerInfo.status = 'processing';
-      workerInfo.currentJob = {
+      this.workerInfo.status = 'processing';
+      this.workerInfo.currentJob = {
         id: job.id || 'unknown',
         actionId: job.data.actionId,
         chunkId: job.data.chunkId,
@@ -279,31 +228,21 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
           chunkId: job.data.chunkId,
           chunkPath: job.data.chunkPath,
           recordCount: job.data.recordCount,
-          workerId,
+          workerId: this.config.workerId,
           partitionId,
-          queueName: workerInfo.queueName,
+          queueName: this.workerInfo.queueName,
           hashRangeStart: job.data.hashRangeStart,
           hashRangeEnd: job.data.hashRangeEnd,
         });
 
-        // Validate that job belongs to this partition (safety check)
-        if (job.data.chunkId) {
-          log.debug('Processing job assigned to correct partition', {
-            jobId: job.id,
-            chunkId: job.data.chunkId,
-            expectedPartition: partitionId,
-            hashRange: `${job.data.hashRangeStart}-${job.data.hashRangeEnd}`,
-          });
-        }
-
         // Process the chunk
-        const result = await this.processChunk(job.data, job, partitionId, job.data.traceId);
+        const result = await this.processChunk(job.data, job, job.data.traceId);
 
         // Update worker metrics
-        workerInfo.jobsProcessed++;
-        workerInfo.jobsSuccessful++;
-        workerInfo.status = 'idle';
-        workerInfo.currentJob = undefined;
+        this.workerInfo.jobsProcessed++;
+        this.workerInfo.jobsSuccessful++;
+        this.workerInfo.status = 'idle';
+        this.workerInfo.currentJob = undefined;
 
         log.info('Processing job completed successfully in partition worker', {
           jobId: job.id,
@@ -312,18 +251,23 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
           recordsProcessed: result.processing.recordsProcessed,
           recordsSuccessful: result.processing.recordsSuccessful,
           processingTime: result.timing.durationMs,
-          workerId,
+          workerId: this.config.workerId,
           partitionId,
         });
 
-        this.emit('jobCompleted', { workerId, partitionId, jobId: job.id, result });
+        this.emit('jobCompleted', {
+          workerId: this.config.workerId,
+          partitionId,
+          jobId: job.id,
+          result,
+        });
 
         return result;
       } catch (error) {
         // Update worker metrics
-        workerInfo.jobsFailed++;
-        workerInfo.status = 'error';
-        workerInfo.currentJob = undefined;
+        this.workerInfo.jobsFailed++;
+        this.workerInfo.status = 'error';
+        this.workerInfo.currentJob = undefined;
 
         const processingTime = Date.now() - startTime;
 
@@ -333,11 +277,16 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
           actionId: job.data.actionId,
           chunkId: job.data.chunkId,
           processingTime,
-          workerId,
+          workerId: this.config.workerId,
           partitionId,
         });
 
-        this.emit('jobFailed', { workerId, partitionId, jobId: job.id, error });
+        this.emit('jobFailed', {
+          workerId: this.config.workerId,
+          partitionId,
+          jobId: job.id,
+          error,
+        });
 
         // Create failure result
         const failureResult: ProcessingJobResult = {
@@ -379,20 +328,19 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
       } finally {
         // Always reset worker status
         setTimeout(() => {
-          workerInfo.status = 'idle';
-          workerInfo.currentJob = undefined;
+          this.workerInfo.status = 'idle';
+          this.workerInfo.currentJob = undefined;
         }, 1000);
       }
     };
   }
 
   /**
-   * Process a single chunk by streaming and processing in batches.
+   * Process a single chunk by streaming and processing in batches
    */
   private async processChunk(
     jobData: ProcessingJobData,
     job: any,
-    partitionId: number,
     traceId: string
   ): Promise<ProcessingJobResult> {
     const log = logger.withTrace(traceId);
@@ -427,7 +375,7 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
               const contactData = this.mapRowToContact(row.data);
               currentBatch.push(contactData);
 
-              // Update job progress every 100 records (UI responsiveness)
+              // Update job progress every 100 records
               if (recordsProcessedInChunk % 100 === 0) {
                 const progress = Math.round((recordsProcessedInChunk / jobData.recordCount) * 100);
                 await job.updateProgress({
@@ -435,19 +383,19 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
                   percentage: progress,
                   processedRecords: recordsProcessedInChunk,
                   totalRecords: jobData.recordCount,
-                  message: `Processing records in partition ${partitionId}: ${recordsProcessedInChunk}/${jobData.recordCount}`,
+                  message: `Processing records in partition ${this.processingWorkerConfig.partitionId}: ${recordsProcessedInChunk}/${jobData.recordCount}`,
                   timestamp: new Date().toISOString(),
                 });
                 log.debug('Progress updated', {
                   chunkId: jobData.chunkId,
-                  partitionId,
+                  partitionId: this.processingWorkerConfig.partitionId,
                   recordsProcessed: recordsProcessedInChunk,
                   totalRecords: jobData.recordCount,
                   progress,
                 });
               }
 
-              // If batch size is reached, process the batch and update stats incrementally
+              // Process batch when it reaches configured size
               if (currentBatch.length >= this.processingWorkerConfig.batchSize) {
                 await this.processBatchAndPersist(jobData, currentBatch, log)
                   .then(batchResult => {
@@ -464,29 +412,27 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
                     log.error(
                       `Error processing batch for chunk ${jobData.chunkId}: ${batchError.message}`
                     );
-                    // If a batch fails, increment failed count by the size of the batch
                     totalFailedInChunk += currentBatch.length;
                     totalDbErrorsInChunk++;
                   })
                   .finally(() => {
-                    currentBatch = []; // Clear the batch
+                    currentBatch = [];
                   });
               }
             } catch (error) {
-              // Error in mapping or initial processing of a single row
               totalFailedInChunk++;
-              log.warn('Failed to process row in partition (pre-batching)', {
+              log.warn('Failed to process row in partition', {
                 rowNumber: row.rowNumber,
-                partitionId,
+                partitionId: this.processingWorkerConfig.partitionId,
                 error: error instanceof Error ? error.message : String(error),
               });
             }
           },
-          undefined, // onEnd callback for CSVStreamReader (handled by .then/.catch below)
+          undefined,
           jobData.traceId
         )
         .then(async () => {
-          // Process any remaining records in the last batch after the stream ends
+          // Process remaining records in final batch
           if (currentBatch.length > 0) {
             await this.processBatchAndPersist(jobData, currentBatch, log)
               .then(batchResult => {
@@ -510,15 +456,14 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
 
           log.info('Chunk CSV streaming completed in partition', {
             chunkId: jobData.chunkId,
-            partitionId,
+            partitionId: this.processingWorkerConfig.partitionId,
             recordsProcessed: recordsProcessedInChunk,
             totalSuccessfulInChunk,
             totalFailedInChunk,
             totalSkippedInChunk,
           });
 
-          // Final stats update for the entire chunk's processing
-          // This will increment the bulk_action_stats counters atomically
+          // Update bulk action statistics
           await this.bulkActionStatService.incrementCounters(
             jobData.actionId,
             {
@@ -529,16 +474,12 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
             jobData.traceId
           );
 
-          // Check for overall bulk action completion and set status to 'done'
+          // Check for overall bulk action completion
           try {
             const stats = await this.bulkActionStatService.getStatsByActionId(
               jobData.actionId,
               jobData.traceId
             );
-            log.debug('Bulk action stats after chunk processing', {
-              actionId: jobData.actionId,
-              stats,
-            });
 
             if (
               stats &&
@@ -552,23 +493,22 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
                 },
                 jobData.traceId
               );
-              log.info(`Bulk action ${jobData.actionId} overall processing completed.`);
+              log.info(`Bulk action ${jobData.actionId} processing completed.`);
             }
           } catch (completionCheckError) {
-            let errorMessage = 'Error checking bulk action completion';
-            if (completionCheckError instanceof Error) {
-              errorMessage = completionCheckError.message;
-            }
-            log.error(` ${jobData.actionId}: ${errorMessage}`);
+            const errorMessage =
+              completionCheckError instanceof Error
+                ? completionCheckError.message
+                : 'Error checking bulk action completion';
+            log.error(`${jobData.actionId}: ${errorMessage}`);
           }
 
           const durationMs = Date.now() - startTime;
           const processingRate =
             recordsProcessedInChunk > 0 ? recordsProcessedInChunk / (durationMs / 1000) : 0;
 
-          // Resolve with the final aggregated results for the entire chunk
           resolve({
-            success: totalFailedInChunk === 0, // Overall success if no failures in chunk
+            success: totalFailedInChunk === 0,
             actionId: jobData.actionId,
             chunkId: jobData.chunkId,
             processing: {
@@ -585,7 +525,7 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
                 errors: totalDbErrorsInChunk,
               },
               timing: {
-                connectionTime: 0, // Not tracked at this level
+                connectionTime: 0,
                 queryTime: totalDbQueryTimeInChunk,
                 totalTime: totalDbQueryTimeInChunk,
               },
@@ -603,7 +543,7 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
             error: error instanceof Error ? error.message : String(error),
             chunkId: jobData.chunkId,
             chunkPath: jobData.chunkPath,
-            partitionId,
+            partitionId: this.processingWorkerConfig.partitionId,
           });
           reject(error);
         });
@@ -611,12 +551,7 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
   }
 
   /**
-   * Processes a single batch of records and persists them to the database.
-   * Also updates the bulk action stats incrementally.
-   * @param jobData The job data containing actionId, traceId, etc.
-   * @param batch The array of records in the current batch.
-   * @param log The logger instance.
-   * @returns An object with success, fail, skip counts for the batch.
+   * Process batch and persist to database
    */
   private async processBatchAndPersist(
     jobData: ProcessingJobData,
@@ -655,15 +590,12 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
     try {
       let bulkResult: BulkContactUpdateResult | BulkContactOperation;
       if (jobData.actionType === 'bulk_update') {
-        console.log({});
         bulkResult = await this.contactService.bulkUpdateContacts(batch, jobData.traceId);
         batchSuccessful = bulkResult.updated.length;
         batchFailed = bulkResult.failed.length;
-        // batchSkipped = bulkResult.; // Assuming skipped are those not found or not updated
         dbUpdates = bulkResult.updated.length;
         dbErrors = bulkResult.failed.length;
       } else {
-        // Default to bulk create/upsert
         bulkResult = await this.contactService.bulkCreateContacts(
           batch,
           jobData.configuration.onConflict || 'skip',
@@ -674,7 +606,7 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
         batchSkipped = bulkResult.skipped.length;
         dbInserts = bulkResult.created.length;
         dbUpdates = bulkResult.updated.length;
-        dbConflicts = bulkResult.skipped.length; // Conflicts are often treated as skipped
+        dbConflicts = bulkResult.skipped.length;
         dbErrors = bulkResult.errors.length;
       }
 
@@ -682,6 +614,7 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
 
       log.debug('Batch processed and persisted', {
         actionId: jobData.actionId,
+        partitionId: this.processingWorkerConfig.partitionId,
         batchSize: batch.length,
         batchSuccessful,
         batchFailed,
@@ -708,134 +641,121 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
     } catch (error) {
       log.error('Error during batch processing and persistence', {
         actionId: jobData.actionId,
+        partitionId: this.processingWorkerConfig.partitionId,
         batchSize: batch.length,
         error: error instanceof Error ? error.message : String(error),
       });
-      // Re-throw to be caught by the main processChunk error handler,
-      // or handle more granularly if needed.
       throw error;
     }
   }
 
   /**
-   * Map CSV row to contact data (unchanged)
+   * Map CSV row to contact data
    */
   private mapRowToContact(rowData: Record<string, string>): any {
     return {
       email: rowData.email?.trim()?.toLowerCase(),
       name: rowData.name?.trim(),
       age: rowData.age ? parseInt(rowData.age) : undefined,
-      id: rowData.id?.trim(), // This ID field is used for partitioning
+      id: rowData.id?.trim(),
     };
   }
 
   /**
-   * Setup event listeners for a partition worker
+   * Setup event listeners for the worker
    */
-  private setupWorkerEventListeners(
-    workerId: string,
-    partitionId: number,
-    worker: Worker,
-    workerInfo: ProcessingWorkerInfo
-  ): void {
-    worker.on('ready', () => {
-      logger.info('Partition processing worker ready', {
-        workerId,
-        partitionId,
-        queueName: workerInfo.queueName,
+  private setupWorkerEventListeners(): void {
+    if (!this.worker) return;
+
+    this.worker.on('ready', () => {
+      logger.info('Single partition processing worker ready', {
+        workerId: this.config.workerId,
+        partitionId: this.processingWorkerConfig.partitionId,
+        queueName: this.workerInfo.queueName,
       });
-      workerInfo.isHealthy = true;
+      this.workerInfo.isHealthy = true;
     });
 
-    worker.on('error', error => {
-      logger.error('Partition processing worker error', {
-        workerId,
-        partitionId,
-        queueName: workerInfo.queueName,
+    this.worker.on('error', error => {
+      logger.error('Single partition processing worker error', {
+        workerId: this.config.workerId,
+        partitionId: this.processingWorkerConfig.partitionId,
+        queueName: this.workerInfo.queueName,
         error: error.message,
       });
-      workerInfo.status = 'error';
-      workerInfo.isHealthy = false;
-      this.emit('workerError', { workerId, partitionId, error });
-    });
-
-    worker.on('stalled', jobId => {
-      logger.warn('Processing job stalled in partition', {
-        workerId,
-        partitionId,
-        jobId,
-        queueName: workerInfo.queueName,
+      this.workerInfo.status = 'error';
+      this.workerInfo.isHealthy = false;
+      this.emit('workerError', {
+        workerId: this.config.workerId,
+        partitionId: this.processingWorkerConfig.partitionId,
+        error,
       });
     });
 
-    worker.on('failed', (job, err) => {
+    this.worker.on('stalled', jobId => {
+      logger.warn('Processing job stalled in partition', {
+        workerId: this.config.workerId,
+        partitionId: this.processingWorkerConfig.partitionId,
+        jobId,
+        queueName: this.workerInfo.queueName,
+      });
+    });
+
+    this.worker.on('failed', (job, err) => {
       logger.error('Processing job failed in partition', {
-        workerId,
-        partitionId,
+        workerId: this.config.workerId,
+        partitionId: this.processingWorkerConfig.partitionId,
         jobId: job?.id,
         actionId: job?.data?.actionId,
         chunkId: job?.data?.chunkId,
-        queueName: workerInfo.queueName,
+        queueName: this.workerInfo.queueName,
         error: err.message,
       });
-      workerInfo.jobsFailed++;
+      this.workerInfo.jobsFailed++;
     });
 
-    worker.on('completed', (job, result) => {
+    this.worker.on('completed', (job, result) => {
       logger.info('Processing job completed in partition', {
-        workerId,
-        partitionId,
+        workerId: this.config.workerId,
+        partitionId: this.processingWorkerConfig.partitionId,
         jobId: job.id,
         actionId: job.data.actionId,
         chunkId: job.data.chunkId,
-        queueName: workerInfo.queueName,
+        queueName: this.workerInfo.queueName,
         success: result.success,
         recordsProcessed: result.processing?.recordsProcessed || 0,
       });
-      workerInfo.jobsSuccessful++;
+      this.workerInfo.jobsSuccessful++;
     });
   }
 
   /**
-   * Stop processing workers
+   * Stop the single processing worker
    */
   protected async stopWorkers(): Promise<void> {
-    if (this.workers.size === 0) {
+    if (!this.worker) {
       return;
     }
 
     try {
-      logger.info('Stopping partition processing workers', {
+      logger.info('Stopping single partition processing worker', {
         workerId: this.config.workerId,
-        workerCount: this.workers.size,
-        partitions: Array.from(this.workers.values()).map(({ info }) => info.partitionId),
+        partitionId: this.processingWorkerConfig.partitionId,
+        queueName: this.workerInfo.queueName,
       });
 
-      // Stop all workers
-      const stopPromises: Promise<void>[] = [];
-      for (const [workerId, { worker, info }] of this.workers) {
-        stopPromises.push(
-          worker.close().catch(error => {
-            logger.error('Error stopping partition processing worker', {
-              workerId,
-              partitionId: info.partitionId,
-              queueName: info.queueName,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          })
-        );
-      }
+      await this.worker.close();
+      this.worker = null;
 
-      await Promise.allSettled(stopPromises);
-      this.workers.clear();
-
-      logger.info('Partition processing workers stopped successfully', {
+      logger.info('Single partition processing worker stopped successfully', {
         workerId: this.config.workerId,
+        partitionId: this.processingWorkerConfig.partitionId,
       });
     } catch (error) {
-      logger.error('Error stopping partition processing workers', {
+      logger.error('Error stopping single partition processing worker', {
         error: error instanceof Error ? error.message : String(error),
         workerId: this.config.workerId,
+        partitionId: this.processingWorkerConfig.partitionId,
       });
       throw error;
     }
@@ -846,91 +766,47 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
    */
   protected async cleanupWorkerComponents(): Promise<void> {
     try {
-      logger.info('Cleaning up partition processing worker components', {
+      logger.info('Cleaning up single partition processing worker components', {
         workerId: this.config.workerId,
+        partitionId: this.processingWorkerConfig.partitionId,
       });
 
-      // Close processing queue
       if (this.processingQueue) {
         await this.processingQueue.close();
         this.processingQueue = null;
-        logger.info('Partition processing queue closed');
+        logger.info('Processing queue closed');
       }
 
-      logger.info('Partition processing worker components cleaned up successfully');
+      logger.info('Single partition processing worker components cleaned up successfully');
     } catch (error) {
-      logger.error('Error cleaning up partition processing worker components', {
+      logger.error('Error cleaning up single partition processing worker components', {
         error: error instanceof Error ? error.message : String(error),
         workerId: this.config.workerId,
+        partitionId: this.processingWorkerConfig.partitionId,
       });
-      // Don't throw during cleanup
     }
   }
 
   /**
-   * Get processing worker metrics with partition information
+   * Get processing worker metrics
    */
   public getMetrics() {
     const baseHealth = this.getHealthStatus();
-    const workers = Array.from(this.workers.values()).map(({ info }) => info);
-    const healthyWorkers = workers.filter(w => w.isHealthy);
-    const processingWorkers = workers.filter(w => w.status === 'processing');
-
-    const totalJobsProcessed = workers.reduce((sum, w) => sum + w.jobsProcessed, 0);
-    const totalJobsSuccessful = workers.reduce((sum, w) => sum + w.jobsSuccessful, 0);
-    const totalJobsFailed = workers.reduce((sum, w) => sum + w.jobsFailed, 0);
-
-    // Partition-specific metrics
-    const partitionMetrics = workers.map(w => ({
-      partitionId: w.partitionId,
-      workerId: w.id,
-      queueName: w.queueName,
-      status: w.status,
-      isHealthy: w.isHealthy,
-      jobsProcessed: w.jobsProcessed,
-      jobsSuccessful: w.jobsSuccessful,
-      jobsFailed: w.jobsFailed,
-      memoryUsage: w.memoryUsage,
-      currentJob: w.currentJob,
-    }));
 
     return {
       serverType: this.config.serverType,
       workerId: this.config.workerId,
+      partitionId: this.processingWorkerConfig.partitionId,
       uptime: this.getUptime(),
       health: baseHealth,
-      workers: {
-        total: workers.length,
-        healthy: healthyWorkers.length,
-        processing: processingWorkers.length,
-        idle: workers.filter(w => w.status === 'idle').length,
-        error: workers.filter(w => w.status === 'error').length,
-      },
-      jobs: {
-        totalProcessed: totalJobsProcessed,
-        totalSuccessful: totalJobsSuccessful,
-        totalFailed: totalJobsFailed,
-        successRate: totalJobsProcessed > 0 ? (totalJobsSuccessful / totalJobsProcessed) * 100 : 0,
-      },
-      partitions: {
-        count: this.processingQueue?.getPartitionCount() || 0,
-        metrics: partitionMetrics,
-      },
+      worker: this.workerInfo,
       configuration: {
-        workerCount: this.processingWorkerConfig.workerCount,
-        concurrencyPerWorker: this.processingWorkerConfig.concurrencyPerWorker,
+        partitionId: this.processingWorkerConfig.partitionId,
         batchSize: this.processingWorkerConfig.batchSize,
-        maxMemoryPerWorker: this.processingWorkerConfig.maxMemoryPerWorker,
-        totalMemoryLimit: this.processingWorkerConfig.totalMemoryLimit,
+        maxMemoryLimit: this.processingWorkerConfig.maxMemoryLimit,
+        queueName: this.workerInfo.queueName,
       },
     };
-  }
-
-  /**
-   * Get healthy worker count
-   */
-  private getHealthyWorkerCount(): number {
-    return Array.from(this.workers.values()).filter(({ info }) => info.isHealthy).length;
   }
 
   /**
@@ -951,7 +827,7 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
       return retryablePatterns.some(pattern => pattern.test(error.message));
     }
 
-    return true; // Unknown errors are retryable by default
+    return true;
   }
 
   /**
@@ -959,86 +835,73 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
    */
   public static createDefaultConfig(): ProcessingWorkerServerConfig {
     const hostname = os.hostname();
-    const workerId = `processing-server-${hostname}-${process.pid}-${uuidv4().substring(0, 8)}`;
-    const workerConfig = configManager.getWorkerConfig();
 
-    // Worker count must match partition count from environment
-    const partitionCount = parseInt(process.env.PROCESSING_WORKER_COUNT || '5');
+    // Get partition ID from environment variable
+    const partitionId = parseInt(process.env.PARTITION_ID || '0');
+    const workerId = `processing-server-${hostname}-${process.pid}-p${partitionId}-${uuidv4().substring(0, 8)}`;
 
     return {
       serverType: 'processing',
       workerId,
       healthCheckPort: parseInt(process.env.HEALTH_CHECK_PORT || '0') || undefined,
-      gracefulShutdownTimeout: 30000, // 30 seconds
-      dependencies: ['database', 'redis', 'minio'], // Processing workers need all dependencies
+      gracefulShutdownTimeout: 30000,
+      dependencies: ['database', 'redis', 'minio'],
 
-      // Processing-specific config - must match partition count
-      workerCount: partitionCount,
-      maxMemoryPerWorker: parseInt(process.env.MAX_MEMORY_PER_WORKER || '256'),
-      totalMemoryLimit: parseInt(process.env.TOTAL_MEMORY_LIMIT || '') || partitionCount * 256,
-      concurrencyPerWorker: parseInt(process.env.CONCURRENCY_PER_WORKER || '3'),
+      // Single partition configuration
+      partitionId,
       batchSize: parseInt(process.env.BATCH_SIZE || '1000'),
-      jobTimeout: parseInt(process.env.JOB_TIMEOUT || '300000'), // 5 minutes
+      jobTimeout: parseInt(process.env.JOB_TIMEOUT || '300000'),
+      maxMemoryLimit: parseInt(process.env.MAX_MEMORY_PER_WORKER || '256'),
       maxRestartAttempts: parseInt(process.env.MAX_RESTART_ATTEMPTS || '3'),
     };
   }
 }
 
 /**
- * Start the processing worker server
+ * Start the single partition processing worker server
  */
 async function startProcessingWorkerServer(): Promise<void> {
   try {
-    const partitionCount = parseInt(process.env.PROCESSING_WORKER_COUNT || '5');
+    const partitionId = parseInt(process.env.PARTITION_ID || '0');
 
-    logger.info('Initializing partition-based processing worker server', {
+    logger.info('Initializing single partition processing worker server', {
       environment: configManager.getAppConfig().nodeEnv,
       nodeVersion: process.version,
       processId: process.pid,
-      partitionCount,
+      partitionId,
     });
 
-    // Create and start processing worker server
     const processingServer = new ProcessingWorkerServer();
 
-    // Setup server event listeners
     processingServer.on('started', () => {
-      logger.info('Partition-based processing worker server started successfully');
+      logger.info('Single partition processing worker server started successfully');
     });
 
     processingServer.on('stopped', () => {
-      logger.info('Partition-based processing worker server stopped successfully');
+      logger.info('Single partition processing worker server stopped successfully');
       process.exit(0);
     });
 
     processingServer.on('error', error => {
-      logger.error('Partition-based processing worker server error', {
+      logger.error('Single partition processing worker server error', {
         error: error instanceof Error ? error.message : String(error),
       });
       process.exit(1);
     });
-
-    // Start the server
     await processingServer.start();
 
-    // Log final status
     const metrics = processingServer.getMetrics();
-    logger.info('Partition-based processing worker server operational', {
+    logger.info('Single partition processing worker server operational', {
       workerId: metrics.workerId,
-      workerCount: metrics.configuration.workerCount,
-      partitionCount: metrics.partitions.count,
-      healthyWorkers: metrics.workers.healthy,
-      totalWorkers: metrics.workers.total,
-      concurrencyPerWorker: metrics.configuration.concurrencyPerWorker,
-      memoryLimit: `${metrics.configuration.totalMemoryLimit}MB`,
-      partitionBindings: metrics.partitions.metrics.map(p => ({
-        partition: p.partitionId,
-        worker: p.workerId,
-        queue: p.queueName,
-      })),
+      partitionId: metrics.partitionId,
+      queueName: metrics.configuration.queueName,
+      batchSize: metrics.configuration.batchSize,
+      memoryLimit: `${metrics.configuration.maxMemoryLimit}MB`,
+      workerStatus: metrics.worker.status,
+      isHealthy: metrics.worker.isHealthy,
     });
   } catch (error) {
-    logger.error('Failed to start partition-based processing worker server', {
+    logger.error('Failed to start single partition processing worker server', {
       error: error instanceof Error ? error.message : String(error),
     });
     process.exit(1);

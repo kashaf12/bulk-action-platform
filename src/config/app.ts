@@ -22,7 +22,7 @@ const envSchema = z.object({
   DB_POOL_MIN: z.coerce.number().int().min(0).default(2),
   DB_POOL_MAX: z.coerce.number().int().min(1).default(20),
   DB_IDLE_TIMEOUT_MILLIS: z.coerce.number().int().min(0).default(30000),
-  DB_CONNECTION_TIMEOUT_MILLIS: z.coerce.number().int().min(0).default(2000),
+  DB_CONNECTION_TIMEOUT_MILLIS: z.coerce.number().int().min(0).default(0),
   DB_STATEMENT_TIMEOUT: z.coerce.number().int().min(0).default(30000),
   DB_QUERY_TIMEOUT: z.coerce.number().int().min(0).default(30000),
 
@@ -197,7 +197,7 @@ class ConfigManager {
       maxCsvRows: this.config.MAX_CSV_ROWS,
       tempDir: this.config.TEMP_DIR,
       defaultBatchSize: this.config.DEFAULT_BATCH_SIZE,
-      maxConcurrentJobs: this.config.MAX_CONCURRENT_JOBS,
+      // maxConcurrentJobs: this.config.MAX_CONCURRENT_JOBS,
     };
   }
 

@@ -4,12 +4,7 @@
  */
 
 import { EventEmitter } from 'events';
-import {
-  ChunkingWorker,
-  ChunkingWorkerConfig,
-  ChunkingWorkerUtils,
-  WorkerStatus,
-} from './chunking/ChunkingWorker';
+import { ChunkingWorker, ChunkingWorkerUtils, WorkerStatus } from './chunking/ChunkingWorker';
 import { logger } from '../utils/logger';
 import configManager from '../config/app';
 import { v4 as uuidv4 } from 'uuid';
@@ -412,7 +407,6 @@ export class WorkerManager extends EventEmitter {
           break;
 
         case WorkerType.PROCESSING:
-          // TODO: Implement ProcessingWorker
           throw new Error('Processing workers not yet implemented');
 
         default:

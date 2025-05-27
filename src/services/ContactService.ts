@@ -401,74 +401,114 @@ export class ContactService implements IService {
       count: contacts.length,
     });
 
-    try {
-      // Validate all contacts first
-      const validatedContacts: IContact[] = [];
-      const validationErrors: Array<{ contact: IContact; error: string }> = [];
+    const MAX_DEADLOCK_RETRIES = 3;
+    let attempts = 0;
+    const initialDelay = 100;
 
-      for (const contactData of contacts) {
-        try {
-          const contact = new Contact(contactData as IContact);
-          const validation = Contact.validate(contact.toObject());
+    // Validate all contacts first
+    const validatedContacts: IContact[] = [];
+    const validationErrors: Array<{ contact: IContact; error: string }> = [];
 
-          if (!validation.isValid) {
-            validationErrors.push({
-              contact: contactData as IContact,
-              error: `Validation failed: ${validation.errors.join(', ')}`,
-            });
-          } else {
-            validatedContacts.push(contact.toObject() as unknown as IContact);
-          }
-        } catch (error) {
+    for (const contactData of contacts) {
+      try {
+        const contact = new Contact(contactData as IContact);
+        const validation = Contact.validate(contact.toObject());
+
+        if (!validation.isValid) {
           validationErrors.push({
             contact: contactData as IContact,
-            error: error instanceof Error ? error.message : String(error),
+            error: `Validation failed: ${validation.errors.join(', ')}`,
           });
+        } else {
+          validatedContacts.push(contact.toObject() as unknown as IContact);
+        }
+      } catch (error) {
+        validationErrors.push({
+          contact: contactData as IContact,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    // Only attempt bulk update if there are valid contacts to process
+    if (validatedContacts.length > 0) {
+      while (attempts < MAX_DEADLOCK_RETRIES) {
+        try {
+          const updateResult = await this.contactRepository.bulkUpdateOnly(
+            validatedContacts,
+            traceId
+          );
+
+          const result: BulkContactUpdateResult = {
+            updated: updateResult.updated,
+            failed: [...updateResult.failed, ...validationErrors],
+            skippedCount: updateResult.skippedCount,
+            totalProcessed: contacts.length,
+            successCount: updateResult.successCount,
+            failureCount: updateResult.failureCount + validationErrors.length,
+          };
+
+          log.info('Bulk contact update completed', {
+            totalContacts: contacts.length,
+            updated: result.updated.length,
+            failed: result.failed.length,
+            validationErrors: validationErrors.length,
+          });
+
+          return result;
+        } catch (error: any) {
+          if (
+            error.code === '40P01' ||
+            (error.message && error.message.includes('deadlock detected'))
+          ) {
+            attempts++;
+            log.warn(
+              `Deadlock detected during bulk update (attempt ${attempts}/${MAX_DEADLOCK_RETRIES}). Retrying...`,
+              {
+                error: error.message,
+                traceId,
+                contactCount: validatedContacts.length,
+              }
+            );
+
+            if (attempts < MAX_DEADLOCK_RETRIES) {
+              const delay = initialDelay * Math.pow(2, attempts - 1); // Exponential backoff
+              await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+              log.error(
+                `Failed to bulk update contacts after ${MAX_DEADLOCK_RETRIES} retries due to persistent deadlock.`,
+                {
+                  error: error.message,
+                  traceId,
+                  contactCount: validatedContacts.length,
+                }
+              );
+              throw error;
+            }
+          } else {
+            log.error('Failed to bulk update contacts due to an unhandled error', {
+              error: error instanceof Error ? error.message : String(error),
+              contactCount: contacts.length,
+            });
+            throw error;
+          }
         }
       }
-
-      // Perform bulk update only on validated contacts
-      let result: BulkContactUpdateResult;
-
-      if (validatedContacts.length > 0) {
-        const updateResult = await this.contactRepository.bulkUpdateOnly(
-          validatedContacts,
-          traceId
-        );
-        result = {
-          updated: updateResult.updated,
-          failed: [...updateResult.failed, ...validationErrors],
-          skippedCount: updateResult.skippedCount,
-          totalProcessed: contacts.length,
-          successCount: updateResult.successCount,
-          failureCount: updateResult.failureCount + validationErrors.length,
-        };
-      } else {
-        result = {
-          updated: [],
-          failed: validationErrors,
-          totalProcessed: contacts.length,
-          successCount: 0,
-          failureCount: validationErrors.length,
-          skippedCount: 0,
-        };
-      }
-
-      log.info('Bulk contact update completed', {
-        totalContacts: contacts.length,
-        updated: result.updated.length,
-        failed: result.failed.length,
-        validationErrors: validationErrors.length,
-      });
-
-      return result;
-    } catch (error) {
-      log.error('Failed to bulk update contacts', {
-        error: error instanceof Error ? error.message : String(error),
-        contactCount: contacts.length,
-      });
-      throw error;
     }
+
+    const finalResultOnError: BulkContactUpdateResult = {
+      updated: [],
+      failed: validationErrors,
+      totalProcessed: contacts.length,
+      successCount: 0,
+      failureCount: validationErrors.length,
+      skippedCount: 0,
+    };
+    log.info('Bulk contact update could not proceed or failed permanently.', {
+      totalContacts: contacts.length,
+      failureCount: finalResultOnError.failureCount,
+    });
+    return finalResultOnError;
   }
 
   /**

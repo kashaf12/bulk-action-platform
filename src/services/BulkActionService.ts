@@ -41,14 +41,9 @@ export interface BulkActionListOptions extends PaginationParams {
 
 export class BulkActionService implements IService {
   private bulkActionRepository: BulkActionRepository;
-  private maxConcurrentActions: number;
-  private rateLimitConfig: { windowMs: number; maxRequests: number };
 
   constructor(bulkActionRepository: BulkActionRepository) {
     this.bulkActionRepository = bulkActionRepository || new BulkActionRepository();
-    const processingConfig = configManager.getProcessingConfig();
-    this.maxConcurrentActions = processingConfig.maxConcurrentJobs;
-    this.rateLimitConfig = configManager.getRateLimitConfig();
   }
 
   /**

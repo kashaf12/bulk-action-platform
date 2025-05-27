@@ -7,7 +7,7 @@
 -- =====================================================
 
 -- Primary lookup indexes
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_contacts_email ON contacts(email);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_contacts_id ON contacts(id);
 
 -- =====================================================
 -- BULK ACTIONS TABLE INDEXES

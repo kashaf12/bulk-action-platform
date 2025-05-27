@@ -12,7 +12,7 @@ CREATE EXTENSION IF NOT EXISTS "pg_stat_statements";
 CREATE TABLE IF NOT EXISTS contacts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
+    email VARCHAR(255) NOT NULL,
     age INTEGER CHECK (age >= 0 AND age <= 120),
 
     -- Metadata

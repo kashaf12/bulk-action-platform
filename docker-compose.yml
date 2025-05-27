@@ -118,12 +118,13 @@ services:
         max-file: "3"
         labels: "service=chunking-workers"
 
-  processing-workers:
+  processing-worker-p0:
     build:
       context: .
       dockerfile: docker/processing.Dockerfile
     environment:
       - NODE_ENV=production
+      - PARTITION_ID=0
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=${DB_NAME:-bulk_action_platform}
@@ -139,13 +140,10 @@ services:
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME:-storage}
       - MINIO_REGION=us-east-1
-      - PROCESSING_WORKER_COUNT=${INGESTION_WORKERS:-5}
-      - CONCURRENCY_PER_WORKER=3
+      - PROCESSING_WORKER_COUNT=5
       - BATCH_SIZE=1000
       - JOB_TIMEOUT=300000
       - MAX_MEMORY_PER_WORKER=256
-      - TOTAL_MEMORY_LIMIT=1280
-      - AUTO_RESTART_WORKERS=true
       - MAX_RESTART_ATTEMPTS=3
       - HEALTH_CHECK_PORT=8002
     volumes:
@@ -160,15 +158,6 @@ services:
       chunking-workers:
         condition: service_healthy
     restart: unless-stopped
-    deploy:
-      replicas: ${PROCESSING_REPLICAS:-3}
-      resources:
-        limits:
-          memory: 1.5G
-          cpus: '1.0'
-        reservations:
-          memory: 1G
-          cpus: '0.5'
     healthcheck:
       test: ["CMD", "node", "-e", "console.log('Processing worker health')"]
       interval: 30s
@@ -180,8 +169,220 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-        labels: "service=processing-workers"
+        labels: "service=processing-worker-p0"
 
+  processing-worker-p1:
+    build:
+      context: .
+      dockerfile: docker/processing.Dockerfile
+    environment:
+      - NODE_ENV=production
+      - PARTITION_ID=1
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-bulk_action_platform}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-password123}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME:-storage}
+      - MINIO_REGION=us-east-1
+      - PROCESSING_WORKER_COUNT=5
+      - BATCH_SIZE=1000
+      - JOB_TIMEOUT=300000
+      - MAX_MEMORY_PER_WORKER=256
+      - MAX_RESTART_ATTEMPTS=3
+      - HEALTH_CHECK_PORT=8002
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      chunking-workers:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "console.log('Processing worker health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=processing-worker-p1"
+
+  processing-worker-p2:
+    build:
+      context: .
+      dockerfile: docker/processing.Dockerfile
+    environment:
+      - NODE_ENV=production
+      - PARTITION_ID=2
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-bulk_action_platform}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-password123}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME:-storage}
+      - MINIO_REGION=us-east-1
+      - PROCESSING_WORKER_COUNT=5
+      - BATCH_SIZE=1000
+      - JOB_TIMEOUT=300000
+      - MAX_MEMORY_PER_WORKER=256
+      - MAX_RESTART_ATTEMPTS=3
+      - HEALTH_CHECK_PORT=8002
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      chunking-workers:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "console.log('Processing worker health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=processing-worker-p2"
+
+  processing-worker-p3:
+    build:
+      context: .
+      dockerfile: docker/processing.Dockerfile
+    environment:
+      - NODE_ENV=production
+      - PARTITION_ID=3
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-bulk_action_platform}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-password123}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME:-storage}
+      - MINIO_REGION=us-east-1
+      - PROCESSING_WORKER_COUNT=5
+      - BATCH_SIZE=1000
+      - JOB_TIMEOUT=300000
+      - MAX_MEMORY_PER_WORKER=256
+      - MAX_RESTART_ATTEMPTS=3
+      - HEALTH_CHECK_PORT=8002
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      chunking-workers:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "console.log('Processing worker health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=processing-worker-p3"
+
+  processing-worker-p4:
+    build:
+      context: .
+      dockerfile: docker/processing.Dockerfile
+    environment:
+      - NODE_ENV=production
+      - PARTITION_ID=4
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-bulk_action_platform}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-password123}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME:-storage}
+      - MINIO_REGION=us-east-1
+      - PROCESSING_WORKER_COUNT=5
+      - BATCH_SIZE=1000
+      - JOB_TIMEOUT=300000
+      - MAX_MEMORY_PER_WORKER=256
+      - MAX_RESTART_ATTEMPTS=3
+      - HEALTH_CHECK_PORT=8002
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      chunking-workers:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "console.log('Processing worker health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=processing-worker-p4"
+        
   postgres:
     image: postgres:15-alpine
     container_name: bulk-action-postgres
