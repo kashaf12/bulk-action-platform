@@ -210,7 +210,9 @@ export class ChunkingService {
       await this.updateBulkActionStatistics(actionId, traceId);
 
       // Update bulk action status to 'processing' (ready for ingestion workers)
-      await this.updateBulkActionStatus(actionId, 'processing', traceId);
+      await this.updateBulkActionStatus(actionId, 'processing', undefined, traceId, {
+        totalEntities: chunkingResult.totalRecords,
+      });
 
       const result = this.createSuccessResult(actionId, chunkingResult);
 
@@ -295,7 +297,7 @@ export class ChunkingService {
 
     // Initialize chunker
     const chunkingConfig: ChunkingConfig = ChunkingUtils.calculateOptimalConfig(
-      config.estimatedRecordCount || 10000, // this is always zero
+      config.estimatedRecordCount || 0, // this is always zero
       1000, // Target chunk size as requested
       100 // Max chunks
     );
@@ -591,10 +593,11 @@ export class ChunkingService {
     actionId: string,
     status: string,
     errorMessage?: string,
-    traceId?: string
+    traceId?: string,
+    opts: any = {}
   ): Promise<void> {
     try {
-      const updates: any = { status };
+      const updates: any = { ...opts, status };
       if (errorMessage) {
         updates.errorMessage = errorMessage;
       }
@@ -816,7 +819,7 @@ export class ChunkingService {
   private getRequiredColumns(entityType: EntityType): string[] {
     switch (entityType) {
       case 'contact':
-        return ['email'];
+        return ['id'];
       default:
         return [];
     }
@@ -876,7 +879,7 @@ export const ChunkingServiceUtils = {
       enableDeduplication: configuration.deduplicate ?? false,
       estimatedRecordCount,
       progressUpdateInterval: 5000, // 5 seconds
-      memoryLimit: 256, // 256MB as requested
+      memoryLimit: 256, // 256MB
     };
   },
 

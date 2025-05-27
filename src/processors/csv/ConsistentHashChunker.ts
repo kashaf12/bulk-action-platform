@@ -754,7 +754,7 @@ export const ChunkingUtils = {
       maxChunkSize: Math.min(adjustedChunkSize, 1000),
       totalChunks: optimalChunks,
       hashAlgorithm: 'sha256',
-      hashField: 'email',
+      hashField: 'id',
       chunkNaming: ChunkNamingStrategy.SEQUENTIAL,
       balanceChunks: true,
       minChunkSize: Math.floor(adjustedChunkSize * 0.1),

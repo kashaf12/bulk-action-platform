@@ -100,8 +100,6 @@ export class CSVValidator {
    * Validate a single CSV row
    */
   public validateRow(row: CSVRow, header: CSVHeader): ValidationResult {
-    const startTime = Date.now();
-
     const result: ValidationResult = {
       isValid: true,
       rowNumber: row.rowNumber,
@@ -142,7 +140,7 @@ export class CSVValidator {
       result.isValid = result.errors.length === 0;
 
       // Update statistics
-      this.updateStats(result, Date.now() - startTime);
+      this.updateStats(result);
 
       return result;
     } catch (error) {
@@ -155,7 +153,7 @@ export class CSVValidator {
         severity: 'error',
       });
 
-      this.updateStats(result, Date.now() - startTime);
+      this.updateStats(result);
       return result;
     }
   }
@@ -572,7 +570,7 @@ export class CSVValidator {
   private getRequiredFields(entityType: EntityType): string[] {
     switch (entityType) {
       case 'contact':
-        return ['email'];
+        return ['id'];
       default:
         return [];
     }
@@ -605,9 +603,8 @@ export class CSVValidator {
   /**
    * Update validation statistics
    */
-  private updateStats(result: ValidationResult, processingTime: number): void {
+  private updateStats(result: ValidationResult): void {
     this.stats.totalRows++;
-    this.stats.processingTime += processingTime;
 
     if (result.isValid) {
       this.stats.validRows++;

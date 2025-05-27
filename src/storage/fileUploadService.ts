@@ -84,7 +84,7 @@ export class FileUploadService {
         entityType: request.entityType,
         actionType: request.actionType,
         status: 'queued',
-        totalEntities: estimatedEntities,
+        totalEntities: 0,
         processedEntities: 0,
         scheduledAt: request.scheduledAt,
         configuration: {
@@ -106,19 +106,17 @@ export class FileUploadService {
           actionType: request.actionType,
           scheduledAt: request.scheduledAt,
           configuration: bulkActionData.configuration,
-          totalEntities: estimatedEntities,
+          totalEntities: 0,
         },
         traceId
       );
-
-      bulkAction.totalEntities = estimatedEntities;
 
       if (!bulkAction?.id) {
         throw new DatabaseError('Failed to create bulk action in database');
       }
 
       // Initialize statistics
-      await this.bulkActionStatService.initializeStats(bulkAction!.id, estimatedEntities, traceId);
+      await this.bulkActionStatService.initializeStats(bulkAction!.id, 0, traceId);
 
       // Create upload result
       const uploadResult: FileUploadResult = {
@@ -290,9 +288,9 @@ export class FileUploadService {
   private estimateEntityCount(fileSize: number, traceId: string): number {
     const log = logger.withTrace(traceId);
 
-    // Rough estimation: average CSV row ~100-200 bytes
+    // Rough estimation: average CSV row ~10-20 bytes
     // This is just for initial estimation, actual count will be determined during processing
-    const averageBytesPerRow = 150;
+    const averageBytesPerRow = 20;
     const estimatedRows = Math.floor(fileSize / averageBytesPerRow);
 
     // Subtract 1 for header row and ensure minimum of 0

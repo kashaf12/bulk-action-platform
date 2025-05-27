@@ -34,7 +34,7 @@ export class Contact extends BaseEntity implements IContact {
   }
 
   public static getUniqueFields(): string[] {
-    return ['email'];
+    return ['id'];
   }
 
   public static getTableName(): string {
