@@ -89,7 +89,7 @@ export class BulkActionStatRepository extends BaseRepository<IBulkActionStat> {
           action_id, total_records, successful_records, failed_records,
           skipped_records
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (action_id) DO UPDATE SET
           total_records = EXCLUDED.total_records,
           successful_records = EXCLUDED.successful_records,
