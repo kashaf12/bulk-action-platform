@@ -444,11 +444,19 @@ export class ContactRepository extends BaseRepository<IContact> {
     totalProcessed: number;
     successCount: number;
     failureCount: number;
+    skippedCount: number;
   }> {
     const log = traceId ? logger.withTrace(traceId) : logger;
 
     if (contacts.length === 0) {
-      return { updated: [], failed: [], totalProcessed: 0, successCount: 0, failureCount: 0 };
+      return {
+        updated: [],
+        failed: [],
+        totalProcessed: 0,
+        successCount: 0,
+        failureCount: 0,
+        skippedCount: 0,
+      };
     }
 
     try {
@@ -502,6 +510,7 @@ export class ContactRepository extends BaseRepository<IContact> {
         totalProcessed: contacts.length,
         successCount: updatedContacts.length,
         failureCount: failed.length,
+        skippedCount: 0,
       };
     } catch (error) {
       log.error('Bulk update only failed', {

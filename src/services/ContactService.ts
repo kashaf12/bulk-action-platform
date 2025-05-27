@@ -17,6 +17,7 @@ export interface BulkContactUpdateResult {
   totalProcessed: number;
   successCount: number;
   failureCount: number;
+  skippedCount: number;
 }
 
 export interface ContactListOptions extends PaginationParams {
@@ -386,7 +387,14 @@ export class ContactService implements IService {
     const log = logger.withTrace(traceId);
 
     if (contacts.length === 0) {
-      return { updated: [], failed: [], totalProcessed: 0, successCount: 0, failureCount: 0 };
+      return {
+        updated: [],
+        failed: [],
+        skippedCount: 0,
+        totalProcessed: 0,
+        successCount: 0,
+        failureCount: 0,
+      };
     }
 
     log.info('Starting bulk contact update (update-only)', {
@@ -430,6 +438,7 @@ export class ContactService implements IService {
         result = {
           updated: updateResult.updated,
           failed: [...updateResult.failed, ...validationErrors],
+          skippedCount: updateResult.skippedCount,
           totalProcessed: contacts.length,
           successCount: updateResult.successCount,
           failureCount: updateResult.failureCount + validationErrors.length,
@@ -441,6 +450,7 @@ export class ContactService implements IService {
           totalProcessed: contacts.length,
           successCount: 0,
           failureCount: validationErrors.length,
+          skippedCount: 0,
         };
       }
 

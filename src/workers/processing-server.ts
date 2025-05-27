@@ -7,7 +7,11 @@ import { Worker } from 'bullmq';
 import { ProcessingJobData, ProcessingJobResult } from '../queues/types/ChunkingJob';
 import { ProcessingQueue } from '../queues/ProcessingQueue';
 import queueConfigManager from '../queues/config/queueConfig';
-import { ContactService } from '../services/ContactService';
+import {
+  BulkContactOperation,
+  BulkContactUpdateResult,
+  ContactService,
+} from '../services/ContactService';
 import { BulkActionService } from '../services/BulkActionService';
 import { BulkActionStatService } from '../services/BulkActionStatService';
 import { ContactRepository } from '../repositories/ContactRepository';
@@ -18,6 +22,7 @@ import { logger } from '../utils/logger';
 import configManager from '../config/app';
 import { v4 as uuidv4 } from 'uuid';
 import os from 'os';
+import { Logger } from 'winston';
 
 export interface ProcessingWorkerServerConfig extends BaseWorkerServerConfig {
   workerCount: number;
@@ -292,7 +297,7 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
         }
 
         // Process the chunk
-        const result = await this.processChunk(job.data, job, partitionId, log);
+        const result = await this.processChunk(job.data, job, partitionId, job.data.traceId);
 
         // Update worker metrics
         workerInfo.jobsProcessed++;
@@ -382,209 +387,332 @@ export class ProcessingWorkerServer extends BaseWorkerServer {
   }
 
   /**
-   * Process a single chunk (unchanged logic, added partition logging)
+   * Process a single chunk by streaming and processing in batches.
    */
-  // Replace the processChunk method with this updated version:
   private async processChunk(
     jobData: ProcessingJobData,
     job: any,
     partitionId: number,
-    log: any
+    traceId: string
   ): Promise<ProcessingJobResult> {
+    const log = logger.withTrace(traceId);
     const startTime = Date.now();
 
-    try {
-      // Read chunk CSV from MinIO
+    let currentBatch: any[] = [];
+    let recordsProcessedInChunk = 0;
+    let totalSuccessfulInChunk = 0;
+    let totalFailedInChunk = 0;
+    let totalSkippedInChunk = 0;
+    let totalInsertsInChunk = 0;
+    let totalUpdatesInChunk = 0;
+    let totalConflictsInChunk = 0;
+    let totalDbErrorsInChunk = 0;
+    let totalDbQueryTimeInChunk = 0;
+
+    return new Promise<ProcessingJobResult>((resolve, reject) => {
       const csvReader = new CSVStreamReader({
         maxFileSize: 50 * 1024 * 1024, // 50MB max for chunks
         maxRowSize: 1024 * 1024, // 1MB max row size
         encoding: 'utf8',
       });
 
-      const contacts: any[] = [];
-      let recordsProcessed = 0;
-      let recordsFailed = 0;
-      let progressUpdateCounter = 0;
-      let statsUpdateCounter = 0;
+      csvReader
+        .streamFromMinIO(
+          jobData.chunkPath,
+          async (row: any) => {
+            recordsProcessedInChunk++;
 
-      // Accumulate stats for batch updates (every 500 records)
-      let pendingStats = { successful: 0, failed: 0, skipped: 0 };
+            try {
+              // Map CSV row to contact data
+              const contactData = this.mapRowToContact(row.data);
+              currentBatch.push(contactData);
 
-      // Process CSV rows
-      const onRow = async (row: any) => {
-        recordsProcessed++;
-        progressUpdateCounter++;
-        statsUpdateCounter++;
+              // Update job progress every 100 records (UI responsiveness)
+              if (recordsProcessedInChunk % 100 === 0) {
+                const progress = Math.round((recordsProcessedInChunk / jobData.recordCount) * 100);
+                await job.updateProgress({
+                  stage: 'processing',
+                  percentage: progress,
+                  processedRecords: recordsProcessedInChunk,
+                  totalRecords: jobData.recordCount,
+                  message: `Processing records in partition ${partitionId}: ${recordsProcessedInChunk}/${jobData.recordCount}`,
+                  timestamp: new Date().toISOString(),
+                });
+                log.debug('Progress updated', {
+                  chunkId: jobData.chunkId,
+                  partitionId,
+                  recordsProcessed: recordsProcessedInChunk,
+                  totalRecords: jobData.recordCount,
+                  progress,
+                });
+              }
 
-        try {
-          // Map CSV row to contact data
-          const contactData = this.mapRowToContact(row.data);
-          contacts.push(contactData);
-
-          // Update job progress every 100 records (UI responsiveness)
-          if (progressUpdateCounter >= 100) {
-            const progress = Math.round((recordsProcessed / jobData.recordCount) * 100);
-            await job.updateProgress({
-              stage: 'processing',
-              percentage: progress,
-              processedRecords: recordsProcessed,
-              totalRecords: jobData.recordCount,
-              message: `Processing records in partition ${partitionId}: ${recordsProcessed}/${jobData.recordCount}`,
-              timestamp: new Date().toISOString(),
-            });
-            progressUpdateCounter = 0;
-
-            log.debug('Progress updated', {
-              chunkId: jobData.chunkId,
-              partitionId,
-              recordsProcessed,
-              totalRecords: jobData.recordCount,
-              progress,
-            });
+              // If batch size is reached, process the batch and update stats incrementally
+              if (currentBatch.length >= this.processingWorkerConfig.batchSize) {
+                await this.processBatchAndPersist(jobData, currentBatch, log)
+                  .then(batchResult => {
+                    totalSuccessfulInChunk += batchResult.successful;
+                    totalFailedInChunk += batchResult.failed;
+                    totalSkippedInChunk += batchResult.skipped;
+                    totalInsertsInChunk += batchResult.database.inserts;
+                    totalUpdatesInChunk += batchResult.database.updates;
+                    totalConflictsInChunk += batchResult.database.conflicts;
+                    totalDbErrorsInChunk += batchResult.database.errors;
+                    totalDbQueryTimeInChunk += batchResult.database.queryTime;
+                  })
+                  .catch(batchError => {
+                    log.error(
+                      `Error processing batch for chunk ${jobData.chunkId}: ${batchError.message}`
+                    );
+                    // If a batch fails, increment failed count by the size of the batch
+                    totalFailedInChunk += currentBatch.length;
+                    totalDbErrorsInChunk++;
+                  })
+                  .finally(() => {
+                    currentBatch = []; // Clear the batch
+                  });
+              }
+            } catch (error) {
+              // Error in mapping or initial processing of a single row
+              totalFailedInChunk++;
+              log.warn('Failed to process row in partition (pre-batching)', {
+                rowNumber: row.rowNumber,
+                partitionId,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          },
+          undefined, // onEnd callback for CSVStreamReader (handled by .then/.catch below)
+          jobData.traceId
+        )
+        .then(async () => {
+          // Process any remaining records in the last batch after the stream ends
+          if (currentBatch.length > 0) {
+            await this.processBatchAndPersist(jobData, currentBatch, log)
+              .then(batchResult => {
+                totalSuccessfulInChunk += batchResult.successful;
+                totalFailedInChunk += batchResult.failed;
+                totalSkippedInChunk += batchResult.skipped;
+                totalInsertsInChunk += batchResult.database.inserts;
+                totalUpdatesInChunk += batchResult.database.updates;
+                totalConflictsInChunk += batchResult.database.conflicts;
+                totalDbErrorsInChunk += batchResult.database.errors;
+                totalDbQueryTimeInChunk += batchResult.database.queryTime;
+              })
+              .catch(batchError => {
+                log.error(
+                  `Error processing final batch for chunk ${jobData.chunkId}: ${batchError.message}`
+                );
+                totalFailedInChunk += currentBatch.length;
+                totalDbErrorsInChunk++;
+              });
           }
 
-          // Update bulk action stats every 500 records (DB efficiency)
-          if (
-            statsUpdateCounter >= 500 &&
-            pendingStats.successful + pendingStats.failed + pendingStats.skipped > 0
-          ) {
-            await this.bulkActionStatService.incrementCounters(
+          log.info('Chunk CSV streaming completed in partition', {
+            chunkId: jobData.chunkId,
+            partitionId,
+            recordsProcessed: recordsProcessedInChunk,
+            totalSuccessfulInChunk,
+            totalFailedInChunk,
+            totalSkippedInChunk,
+          });
+
+          // Final stats update for the entire chunk's processing
+          // This will increment the bulk_action_stats counters atomically
+          await this.bulkActionStatService.incrementCounters(
+            jobData.actionId,
+            {
+              successful: totalSuccessfulInChunk,
+              failed: totalFailedInChunk,
+              skipped: totalSkippedInChunk,
+            },
+            jobData.traceId
+          );
+
+          // Check for overall bulk action completion and set status to 'done'
+          try {
+            const stats = await this.bulkActionStatService.getStatsByActionId(
               jobData.actionId,
-              pendingStats,
               jobData.traceId
             );
-
-            log.debug('Stats updated incrementally', {
-              chunkId: jobData.chunkId,
-              partitionId,
-              pendingStats,
-              recordsProcessed,
+            log.debug('Bulk action stats after chunk processing', {
+              actionId: jobData.actionId,
+              stats,
             });
 
-            // Reset pending stats
-            pendingStats = { successful: 0, failed: 0, skipped: 0 };
-            statsUpdateCounter = 0;
+            if (
+              stats &&
+              stats.successfulRecords + stats.failedRecords + stats.skippedRecords ===
+                stats.totalRecords
+            ) {
+              await this.bulkActionService.updateBulkAction(
+                jobData.actionId,
+                {
+                  status: 'completed',
+                },
+                jobData.traceId
+              );
+              log.info(`Bulk action ${jobData.actionId} overall processing completed.`);
+            }
+          } catch (completionCheckError) {
+            let errorMessage = 'Error checking bulk action completion';
+            if (completionCheckError instanceof Error) {
+              errorMessage = completionCheckError.message;
+            }
+            log.error(` ${jobData.actionId}: ${errorMessage}`);
           }
-        } catch (error) {
-          recordsFailed++;
-          pendingStats.failed++;
 
-          log.warn('Failed to process row in partition', {
-            rowNumber: row.rowNumber,
-            partitionId,
-            error: error instanceof Error ? error.message : String(error),
+          const durationMs = Date.now() - startTime;
+          const processingRate =
+            recordsProcessedInChunk > 0 ? recordsProcessedInChunk / (durationMs / 1000) : 0;
+
+          // Resolve with the final aggregated results for the entire chunk
+          resolve({
+            success: totalFailedInChunk === 0, // Overall success if no failures in chunk
+            actionId: jobData.actionId,
+            chunkId: jobData.chunkId,
+            processing: {
+              recordsProcessed: recordsProcessedInChunk,
+              recordsSuccessful: totalSuccessfulInChunk,
+              recordsFailed: totalFailedInChunk,
+              recordsSkipped: totalSkippedInChunk,
+            },
+            database: {
+              operations: {
+                inserts: totalInsertsInChunk,
+                updates: totalUpdatesInChunk,
+                conflicts: totalConflictsInChunk,
+                errors: totalDbErrorsInChunk,
+              },
+              timing: {
+                connectionTime: 0, // Not tracked at this level
+                queryTime: totalDbQueryTimeInChunk,
+                totalTime: totalDbQueryTimeInChunk,
+              },
+            },
+            timing: {
+              startedAt: new Date(startTime).toISOString(),
+              completedAt: new Date().toISOString(),
+              durationMs,
+              processingRate,
+            },
           });
-        }
+        })
+        .catch(error => {
+          log.error('Chunk processing failed during stream or finalization', {
+            error: error instanceof Error ? error.message : String(error),
+            chunkId: jobData.chunkId,
+            chunkPath: jobData.chunkPath,
+            partitionId,
+          });
+          reject(error);
+        });
+    });
+  }
+
+  /**
+   * Processes a single batch of records and persists them to the database.
+   * Also updates the bulk action stats incrementally.
+   * @param jobData The job data containing actionId, traceId, etc.
+   * @param batch The array of records in the current batch.
+   * @param log The logger instance.
+   * @returns An object with success, fail, skip counts for the batch.
+   */
+  private async processBatchAndPersist(
+    jobData: ProcessingJobData,
+    batch: any[],
+    log: any
+  ): Promise<{
+    successful: number;
+    failed: number;
+    skipped: number;
+    database: {
+      inserts: number;
+      updates: number;
+      conflicts: number;
+      errors: number;
+      queryTime: number;
+    };
+  }> {
+    const dbStartTime = Date.now();
+    let batchSuccessful = 0;
+    let batchFailed = 0;
+    let batchSkipped = 0;
+    let dbInserts = 0;
+    let dbUpdates = 0;
+    let dbConflicts = 0;
+    let dbErrors = 0;
+
+    if (batch.length === 0) {
+      return {
+        successful: 0,
+        failed: 0,
+        skipped: 0,
+        database: { inserts: 0, updates: 0, conflicts: 0, errors: 0, queryTime: 0 },
       };
+    }
 
-      // Stream and process the chunk
-      await csvReader.streamFromMinIO(jobData.chunkPath, onRow, undefined, jobData.traceId);
-
-      log.info('Chunk CSV processing completed in partition', {
-        chunkId: jobData.chunkId,
-        partitionId,
-        recordsProcessed,
-        recordsFailed,
-        validRecords: contacts.length,
-        actionType: jobData.actionType,
-      });
-
-      // Bulk database operation based on action type
-      const dbStartTime = Date.now();
-      let bulkResult: any;
-
+    try {
+      let bulkResult: BulkContactUpdateResult | BulkContactOperation;
       if (jobData.actionType === 'bulk_update') {
-        // Use update-only method
-        bulkResult = await this.contactService.bulkUpdateContacts(contacts, jobData.traceId);
-
-        // Convert to expected format
-        bulkResult = {
-          created: [],
-          updated: bulkResult.updated,
-          skipped: [],
-          errors: bulkResult.failed,
-        };
+        console.log({});
+        bulkResult = await this.contactService.bulkUpdateContacts(batch, jobData.traceId);
+        batchSuccessful = bulkResult.updated.length;
+        batchFailed = bulkResult.failed.length;
+        // batchSkipped = bulkResult.; // Assuming skipped are those not found or not updated
+        dbUpdates = bulkResult.updated.length;
+        dbErrors = bulkResult.failed.length;
       } else {
-        // Use create/upsert method
+        // Default to bulk create/upsert
         bulkResult = await this.contactService.bulkCreateContacts(
-          contacts,
+          batch,
           jobData.configuration.onConflict || 'skip',
           jobData.traceId
         );
+        batchSuccessful = bulkResult.created.length + bulkResult.updated.length;
+        batchFailed = bulkResult.errors.length;
+        batchSkipped = bulkResult.skipped.length;
+        dbInserts = bulkResult.created.length;
+        dbUpdates = bulkResult.updated.length;
+        dbConflicts = bulkResult.skipped.length; // Conflicts are often treated as skipped
+        dbErrors = bulkResult.errors.length;
       }
 
-      const dbTime = Date.now() - dbStartTime;
+      const dbQueryTime = Date.now() - dbStartTime;
 
-      // Final stats update with any remaining pending stats + final results
-      const finalStats = {
-        successful: pendingStats.successful + bulkResult.updated.length + bulkResult.created.length,
-        failed: pendingStats.failed + bulkResult.errors.length,
-        skipped: pendingStats.skipped + bulkResult.skipped.length,
-      };
-
-      await this.bulkActionStatService.incrementCounters(
-        jobData.actionId,
-        finalStats,
-        jobData.traceId
-      );
-
-      log.info('Chunk processing completed in partition', {
-        chunkId: jobData.chunkId,
-        partitionId,
-        actionType: jobData.actionType,
-        dbResults: {
-          created: bulkResult.created.length,
-          updated: bulkResult.updated.length,
-          skipped: bulkResult.skipped.length,
-          errors: bulkResult.errors.length,
-        },
-        finalStats,
-        dbTime,
-      });
-
-      const durationMs = Date.now() - startTime;
-      const processingRate = recordsProcessed > 0 ? recordsProcessed / (durationMs / 1000) : 0;
-
-      // Create success result
-      const result: ProcessingJobResult = {
-        success: true,
+      log.debug('Batch processed and persisted', {
         actionId: jobData.actionId,
-        chunkId: jobData.chunkId,
-        processing: {
-          recordsProcessed,
-          recordsSuccessful: bulkResult.created.length + bulkResult.updated.length,
-          recordsFailed: bulkResult.errors.length,
-          recordsSkipped: bulkResult.skipped.length,
-        },
+        batchSize: batch.length,
+        batchSuccessful,
+        batchFailed,
+        batchSkipped,
+        dbInserts,
+        dbUpdates,
+        dbConflicts,
+        dbErrors,
+        dbQueryTime,
+      });
+
+      return {
+        successful: batchSuccessful,
+        failed: batchFailed,
+        skipped: batchSkipped,
         database: {
-          operations: {
-            inserts: bulkResult.created.length,
-            updates: bulkResult.updated.length,
-            conflicts: bulkResult.skipped.length,
-            errors: bulkResult.errors.length,
-          },
-          timing: {
-            connectionTime: 0,
-            queryTime: dbTime,
-            totalTime: dbTime,
-          },
-        },
-        timing: {
-          startedAt: new Date(startTime).toISOString(),
-          completedAt: new Date().toISOString(),
-          durationMs,
-          processingRate,
+          inserts: dbInserts,
+          updates: dbUpdates,
+          conflicts: dbConflicts,
+          errors: dbErrors,
+          queryTime: dbQueryTime,
         },
       };
-
-      return result;
     } catch (error) {
-      log.error('Chunk processing failed in partition', {
+      log.error('Error during batch processing and persistence', {
+        actionId: jobData.actionId,
+        batchSize: batch.length,
         error: error instanceof Error ? error.message : String(error),
-        chunkId: jobData.chunkId,
-        chunkPath: jobData.chunkPath,
-        partitionId,
       });
+      // Re-throw to be caught by the main processChunk error handler,
+      // or handle more granularly if needed.
       throw error;
     }
   }
