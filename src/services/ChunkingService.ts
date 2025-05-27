@@ -98,7 +98,6 @@ export interface ChunkingServiceResult {
   totalRecords: number;
   validRecords: number;
   invalidRecords: number;
-  duplicateRecords: number;
   skippedRecords: number;
 
   // Chunking results
@@ -563,7 +562,6 @@ export class ChunkingService {
           successfulRecords: validationStats.validRows,
           failedRecords: validationStats.invalidRows,
           skippedRecords: deduplicationStats.skippedRows,
-          duplicateRecords: deduplicationStats.duplicateRows,
         },
         traceId || ''
       );
@@ -575,7 +573,6 @@ export class ChunkingService {
         totalRecords: csvStats.totalRows,
         validRecords: validationStats.validRows,
         invalidRecords: validationStats.invalidRows,
-        duplicateRecords: deduplicationStats.duplicateRows,
         skippedRecords: deduplicationStats.skippedRows,
       });
     } catch (error) {
@@ -641,7 +638,6 @@ export class ChunkingService {
         successfulRecords: 0,
         failedRecords: 1, // Mark as one failed record for structure failure
         skippedRecords: 0,
-        duplicateRecords: 0,
       },
       traceId || ''
     );
@@ -652,7 +648,6 @@ export class ChunkingService {
       totalRecords: 0,
       validRecords: 0,
       invalidRecords: 0,
-      duplicateRecords: 0,
       skippedRecords: 0,
       chunksCreated: 0,
       chunkMetadata: [],
@@ -689,7 +684,6 @@ export class ChunkingService {
       totalRecords: csvStats.totalRows,
       validRecords: validationStats.validRows,
       invalidRecords: validationStats.invalidRows,
-      duplicateRecords: deduplicationStats.duplicateRows,
       skippedRecords: deduplicationStats.skippedRows,
       chunksCreated: chunkingResult.chunksCreated,
       chunkMetadata: chunkingResult.chunkMetadata.map(chunk => ({
@@ -722,7 +716,6 @@ export class ChunkingService {
       totalRecords: 0,
       validRecords: 0,
       invalidRecords: 0,
-      duplicateRecords: 0,
       skippedRecords: 0,
       chunksCreated: 0,
       chunkMetadata: [],

@@ -215,11 +215,6 @@ export class BulkActionController extends BaseController {
           actionType: action.actionType,
           status: action.status,
           totalEntities: action.totalEntities,
-          processedEntities: action.processedEntities,
-          progressPercentage:
-            action.totalEntities > 0
-              ? Math.round((action.processedEntities / action.totalEntities) * 100)
-              : 0,
           scheduledAt: action.scheduledAt,
           startedAt: action.startedAt,
           completedAt: action.completedAt,
@@ -292,11 +287,6 @@ export class BulkActionController extends BaseController {
           actionType: bulkAction.actionType,
           status: bulkAction.status,
           totalEntities: bulkAction.totalEntities,
-          processedEntities: bulkAction.processedEntities,
-          progressPercentage:
-            bulkAction.totalEntities > 0
-              ? Math.round((bulkAction.processedEntities / bulkAction.totalEntities) * 100)
-              : 0,
           configuration: bulkAction.configuration,
           scheduledAt: bulkAction.scheduledAt,
           startedAt: bulkAction.startedAt,

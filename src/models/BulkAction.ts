@@ -20,7 +20,6 @@ export class BulkAction extends BaseEntity implements IBulkAction {
   public actionType: BulkActionType;
   public status: BulkActionStatus;
   public totalEntities: number;
-  public processedEntities: number;
   public scheduledAt?: Date;
   public startedAt?: Date;
   public completedAt?: Date;
@@ -35,7 +34,6 @@ export class BulkAction extends BaseEntity implements IBulkAction {
     this.actionType = data.actionType;
     this.status = data.status;
     this.totalEntities = data.totalEntities;
-    this.processedEntities = data.processedEntities;
     this.scheduledAt = data.scheduledAt;
     this.startedAt = data.startedAt;
     this.completedAt = data.completedAt;
@@ -67,7 +65,6 @@ export class BulkAction extends BaseEntity implements IBulkAction {
       actionType: 'action_type',
       status: 'status',
       totalEntities: 'total_entities',
-      processedEntities: 'processed_entities',
       scheduledAt: 'scheduled_at',
       startedAt: 'started_at',
       completedAt: 'completed_at',
@@ -94,7 +91,6 @@ export class BulkAction extends BaseEntity implements IBulkAction {
       ...entityData,
       status: entityData.status || 'queued',
       totalEntities: entityData.totalEntities || 0,
-      processedEntities: entityData.processedEntities || 0,
       configuration: entityData.configuration || {},
     } as IBulkAction;
 
@@ -109,7 +105,6 @@ export class BulkAction extends BaseEntity implements IBulkAction {
       actionType: this.actionType,
       status: this.status,
       totalEntities: this.totalEntities,
-      processedEntities: this.processedEntities,
       scheduledAt: this.scheduledAt,
       startedAt: this.startedAt,
       completedAt: this.completedAt,
@@ -177,7 +172,6 @@ export class BulkAction extends BaseEntity implements IBulkAction {
       throw new Error('Invalid processed count');
     }
 
-    this.processedEntities = processedCount;
     this.updatedAt = new Date();
 
     // Auto-complete if all entities processed

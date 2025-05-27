@@ -90,7 +90,7 @@ export class BulkActionRepository extends BaseRepository<IBulkAction> {
       const dataQuery = `
         SELECT 
           id, account_id, entity_type, action_type, status,
-          total_entities, processed_entities, scheduled_at, started_at, 
+          total_entities, scheduled_at, started_at, 
           completed_at, configuration, error_message, created_at, updated_at
         FROM bulk_actions 
         ${whereClause}
@@ -157,24 +157,24 @@ export class BulkActionRepository extends BaseRepository<IBulkAction> {
       try {
         await client.query('BEGIN');
 
-        for (const { id, processedEntities, status } of updates) {
+        for (const { id, status } of updates) {
           let query: string;
           let values: unknown[];
 
           if (status) {
             query = `
               UPDATE bulk_actions 
-              SET processed_entities = $1, status = $2, updated_at = NOW()
-              WHERE action_id = $3
+              SET status = $1, updated_at = NOW()
+              WHERE action_id = $2
             `;
-            values = [processedEntities, status, id];
+            values = [status, id];
           } else {
             query = `
               UPDATE bulk_actions 
-              SET processed_entities = $1, updated_at = NOW()
-              WHERE action_id = $2
+              SET updated_at = NOW()
+              WHERE action_id = $1
             `;
-            values = [processedEntities, id];
+            values = [id];
           }
 
           await client.query(query, values);

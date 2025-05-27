@@ -57,14 +57,12 @@ export class BulkActionStatController extends BaseController {
           successfulRecords: stats.successfulRecords,
           failedRecords: stats.failedRecords,
           skippedRecords: stats.skippedRecords,
-          duplicateRecords: stats.duplicateRecords,
           processedRecords: stats.processedRecords,
 
           // Calculated metrics
           successRate: stats.successRate,
           failureRate: stats.failureRate,
           skipRate: stats.skipRate,
-          duplicateRate: stats.duplicateRate,
           completionRate: stats.completionRate,
 
           // Timestamps

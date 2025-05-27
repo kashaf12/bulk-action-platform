@@ -17,7 +17,6 @@ export type EntityType = 'contact';
 export type ConflictStrategy = 'skip' | 'error' | 'create';
 
 export interface BulkActionConfiguration {
-  batchSize?: number;
   deduplicate?: boolean;
   onConflict?: 'skip' | 'update' | 'error';
   fields?: Record<string, unknown>;
@@ -30,7 +29,6 @@ export interface IBulkAction extends IEntity {
   actionType: BulkActionType;
   status: BulkActionStatus;
   totalEntities: number;
-  processedEntities: number;
   scheduledAt?: Date;
   startedAt?: Date;
   completedAt?: Date;
@@ -53,7 +51,6 @@ export interface BulkActionCreateData {
 export interface BulkActionUpdateData {
   status?: BulkActionStatus;
   totalEntities?: number;
-  processedEntities?: number;
   startedAt?: Date;
   completedAt?: Date;
   errorMessage?: string;
@@ -67,7 +64,6 @@ export interface BulkActionRow {
   action_type: string;
   status: string;
   total_entities: number;
-  processed_entities: number;
   scheduled_at?: Date;
   started_at?: Date;
   completed_at?: Date;

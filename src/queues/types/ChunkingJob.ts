@@ -168,7 +168,6 @@ export interface ChunkingJobResult {
     totalRecords: number;
     validRecords: number;
     invalidRecords: number;
-    duplicateRecords: number;
     skippedRecords: number;
   };
 

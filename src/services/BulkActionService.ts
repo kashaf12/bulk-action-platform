@@ -235,11 +235,6 @@ export class BulkActionService implements IService {
         this.validateStatusTransition(currentBulkAction.status, updates.status);
       }
 
-      // Validate progress updates
-      if (updates.processedEntities !== undefined) {
-        this.validateProgressUpdate(currentBulkAction, updates.processedEntities);
-      }
-
       // Perform update
       const updatedBulkAction = await this.bulkActionRepository.update(id, updates, traceId);
 
@@ -251,7 +246,6 @@ export class BulkActionService implements IService {
         id,
         oldStatus: currentBulkAction.status,
         newStatus: updatedBulkAction.status,
-        progress: `${updatedBulkAction.processedEntities}/${updatedBulkAction.totalEntities}`,
       });
 
       return updatedBulkAction;
@@ -276,9 +270,7 @@ export class BulkActionService implements IService {
     const log = logger.withTrace(traceId);
 
     try {
-      const updates: BulkActionUpdateData = {
-        processedEntities,
-      };
+      const updates: BulkActionUpdateData = {};
 
       // Get current action to check if it should be completed
       const currentAction = await this.getBulkActionById(id, traceId);
@@ -388,10 +380,6 @@ export class BulkActionService implements IService {
 
     if (processedEntities > bulkAction.totalEntities) {
       throw new ValidationError('Processed entities cannot exceed total entities');
-    }
-
-    if (processedEntities < bulkAction.processedEntities) {
-      throw new ValidationError('Processed entities cannot decrease');
     }
   }
 }

@@ -12,7 +12,6 @@ export const bulkActionStatSchema = baseEntitySchema.extend({
   successfulRecords: z.number().int().min(0).default(0),
   failedRecords: z.number().int().min(0).default(0),
   skippedRecords: z.number().int().min(0).default(0),
-  duplicateRecords: z.number().int().min(0).default(0),
 });
 
 // Bulk action stat creation schema
@@ -22,7 +21,6 @@ export const bulkActionStatCreateSchema = z.object({
   successfulRecords: z.number().int().min(0).default(0),
   failedRecords: z.number().int().min(0).default(0),
   skippedRecords: z.number().int().min(0).default(0),
-  duplicateRecords: z.number().int().min(0).default(0),
 });
 
 // Bulk action stat update schema (all fields optional)
@@ -31,7 +29,6 @@ export const bulkActionStatUpdateSchema = z.object({
   successfulRecords: z.number().int().min(0).optional(),
   failedRecords: z.number().int().min(0).optional(),
   skippedRecords: z.number().int().min(0).optional(),
-  duplicateRecords: z.number().int().min(0).optional(),
 });
 
 // Validation for stats consistency

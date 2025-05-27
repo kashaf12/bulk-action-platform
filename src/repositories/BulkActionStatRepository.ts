@@ -38,7 +38,7 @@ export class BulkActionStatRepository extends BaseRepository<IBulkActionStat> {
       const query = `
         SELECT 
           id, action_id, total_records, successful_records, failed_records,
-          skipped_records, duplicate_records, created_at, updated_at
+          skipped_records, created_at, updated_at
         FROM bulk_action_stats 
         WHERE action_id = $1
       `;
@@ -87,7 +87,7 @@ export class BulkActionStatRepository extends BaseRepository<IBulkActionStat> {
       const query = `
         INSERT INTO bulk_action_stats (
           action_id, total_records, successful_records, failed_records,
-          skipped_records, duplicate_records
+          skipped_records
         )
         VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (action_id) DO UPDATE SET
@@ -95,11 +95,10 @@ export class BulkActionStatRepository extends BaseRepository<IBulkActionStat> {
           successful_records = EXCLUDED.successful_records,
           failed_records = EXCLUDED.failed_records,
           skipped_records = EXCLUDED.skipped_records,
-          duplicate_records = EXCLUDED.duplicate_records,
           updated_at = NOW()
         RETURNING 
           id, action_id, total_records, successful_records, failed_records,
-          skipped_records, duplicate_records, created_at, updated_at
+          skipped_records, created_at, updated_at
       `;
 
       const values = [
@@ -108,7 +107,6 @@ export class BulkActionStatRepository extends BaseRepository<IBulkActionStat> {
         data.successfulRecords || 0,
         data.failedRecords || 0,
         data.skippedRecords || 0,
-        data.duplicateRecords || 0,
       ];
 
       const result = await database.query(query, values, traceId);
@@ -182,7 +180,7 @@ export class BulkActionStatRepository extends BaseRepository<IBulkActionStat> {
         WHERE action_id = $${paramIndex}
         RETURNING 
           id, action_id, total_records, successful_records, failed_records,
-          skipped_records, duplicate_records, created_at, updated_at
+          skipped_records, created_at, updated_at
       `;
 
       const result = await database.query(query, values, traceId);
@@ -227,7 +225,6 @@ export class BulkActionStatRepository extends BaseRepository<IBulkActionStat> {
       successful?: number;
       failed?: number;
       skipped?: number;
-      duplicate?: number;
     },
     traceId: string
   ): Promise<IBulkActionStat | null> {
@@ -253,11 +250,6 @@ export class BulkActionStatRepository extends BaseRepository<IBulkActionStat> {
         validIncrements.skipped = increments.skipped;
       }
 
-      if (increments.duplicate && increments.duplicate > 0) {
-        setClauses.push(`duplicate_records = duplicate_records + $${setClauses.length + 1}`);
-        validIncrements.duplicate = increments.duplicate;
-      }
-
       if (setClauses.length === 0) {
         log.debug('No valid increments provided', { actionId, increments });
         return await this.findByActionId(actionId, traceId);
@@ -272,7 +264,7 @@ export class BulkActionStatRepository extends BaseRepository<IBulkActionStat> {
         WHERE action_id = $${values.length}
         RETURNING 
           id, action_id, total_records, successful_records, failed_records,
-          skipped_records, duplicate_records, created_at, updated_at
+          skipped_records, created_at, updated_at
       `;
 
       const result = await database.query(query, values, traceId);
@@ -297,7 +289,6 @@ export class BulkActionStatRepository extends BaseRepository<IBulkActionStat> {
           successful: updatedBulkActionStat.successfulRecords,
           failed: updatedBulkActionStat.failedRecords,
           skipped: updatedBulkActionStat.skippedRecords,
-          duplicate: updatedBulkActionStat.duplicateRecords,
         },
       });
 
@@ -357,7 +348,6 @@ export class BulkActionStatRepository extends BaseRepository<IBulkActionStat> {
         successfulRecords: 0,
         failedRecords: 0,
         skippedRecords: 0,
-        duplicateRecords: 0,
       };
 
       const stats = await this.createOrUpdate(data, traceId);
@@ -469,12 +459,10 @@ export class BulkActionStatRepository extends BaseRepository<IBulkActionStat> {
     successfulRecords: number;
     failedRecords: number;
     skippedRecords: number;
-    duplicateRecords: number;
     processedRecords: number;
     successRate: number;
     failureRate: number;
     skipRate: number;
-    duplicateRate: number;
     completionRate: number;
     createdAt?: Date;
     updatedAt?: Date;
@@ -495,7 +483,6 @@ export class BulkActionStatRepository extends BaseRepository<IBulkActionStat> {
         successfulRecords: stats.successfulRecords,
         failedRecords: stats.failedRecords,
         skippedRecords: stats.skippedRecords,
-        duplicateRecords: stats.duplicateRecords,
         processedRecords: stats.successfulRecords + stats.failedRecords + stats.skippedRecords,
         successRate:
           stats.totalRecords > 0
@@ -508,10 +495,6 @@ export class BulkActionStatRepository extends BaseRepository<IBulkActionStat> {
         skipRate:
           stats.totalRecords > 0
             ? Math.round((stats.skippedRecords / stats.totalRecords) * 100 * 100) / 100
-            : 0,
-        duplicateRate:
-          stats.totalRecords > 0
-            ? Math.round((stats.duplicateRecords / stats.totalRecords) * 100 * 100) / 100
             : 0,
         completionRate:
           stats.totalRecords > 0

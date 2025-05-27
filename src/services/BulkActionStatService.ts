@@ -256,7 +256,6 @@ export class BulkActionStatService implements IService {
           successful: updatedStats.successfulRecords,
           failed: updatedStats.failedRecords,
           skipped: updatedStats.skippedRecords,
-          duplicate: updatedStats.duplicateRecords,
         },
       });
 
@@ -403,10 +402,6 @@ export class BulkActionStatService implements IService {
     if (data.skippedRecords !== undefined && data.skippedRecords < 0) {
       throw new ValidationError('Skipped records cannot be negative');
     }
-
-    if (data.duplicateRecords !== undefined && data.duplicateRecords < 0) {
-      throw new ValidationError('Duplicate records cannot be negative');
-    }
   }
 
   /**
@@ -427,10 +422,6 @@ export class BulkActionStatService implements IService {
 
     if (updates.skippedRecords !== undefined && updates.skippedRecords < 0) {
       throw new ValidationError('Skipped records cannot be negative');
-    }
-
-    if (updates.duplicateRecords !== undefined && updates.duplicateRecords < 0) {
-      throw new ValidationError('Duplicate records cannot be negative');
     }
   }
 

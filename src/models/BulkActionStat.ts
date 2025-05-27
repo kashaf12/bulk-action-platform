@@ -14,7 +14,6 @@ export class BulkActionStat extends BaseEntity implements IBulkActionStat {
   public successfulRecords: number;
   public failedRecords: number;
   public skippedRecords: number;
-  public duplicateRecords: number;
 
   constructor(data: IBulkActionStat) {
     super(data);
@@ -23,7 +22,6 @@ export class BulkActionStat extends BaseEntity implements IBulkActionStat {
     this.successfulRecords = data.successfulRecords;
     this.failedRecords = data.failedRecords;
     this.skippedRecords = data.skippedRecords;
-    this.duplicateRecords = data.duplicateRecords;
   }
 
   public static getEntityType(): string {
@@ -50,7 +48,6 @@ export class BulkActionStat extends BaseEntity implements IBulkActionStat {
       successfulRecords: 'successful_records',
       failedRecords: 'failed_records',
       skippedRecords: 'skipped_records',
-      duplicateRecords: 'duplicate_records',
     };
   }
 
@@ -74,7 +71,6 @@ export class BulkActionStat extends BaseEntity implements IBulkActionStat {
       successfulRecords: entityData.successfulRecords || 0,
       failedRecords: entityData.failedRecords || 0,
       skippedRecords: entityData.skippedRecords || 0,
-      duplicateRecords: entityData.duplicateRecords || 0,
     } as IBulkActionStat;
 
     return new BulkActionStat(bulkActionStatData);
@@ -88,7 +84,6 @@ export class BulkActionStat extends BaseEntity implements IBulkActionStat {
       successful_records: this.successfulRecords,
       failed_records: this.failedRecords,
       skipped_records: this.skippedRecords,
-      duplicate_records: this.duplicateRecords,
     };
   }
 
@@ -133,10 +128,6 @@ export class BulkActionStat extends BaseEntity implements IBulkActionStat {
       errors.push('Skipped records cannot be negative');
     }
 
-    if (this.duplicateRecords < 0) {
-      errors.push('Duplicate records cannot be negative');
-    }
-
     return errors;
   }
 
@@ -156,9 +147,6 @@ export class BulkActionStat extends BaseEntity implements IBulkActionStat {
     if (updates.skippedRecords !== undefined) {
       this.skippedRecords = updates.skippedRecords;
     }
-    if (updates.duplicateRecords !== undefined) {
-      this.duplicateRecords = updates.duplicateRecords;
-    }
 
     this.updatedAt = new Date();
   }
@@ -170,7 +158,6 @@ export class BulkActionStat extends BaseEntity implements IBulkActionStat {
     successful?: number;
     failed?: number;
     skipped?: number;
-    duplicate?: number;
   }): void {
     if (increments.successful) {
       this.successfulRecords += increments.successful;
@@ -180,9 +167,6 @@ export class BulkActionStat extends BaseEntity implements IBulkActionStat {
     }
     if (increments.skipped) {
       this.skippedRecords += increments.skipped;
-    }
-    if (increments.duplicate) {
-      this.duplicateRecords += increments.duplicate;
     }
 
     this.updatedAt = new Date();
@@ -198,7 +182,6 @@ export class BulkActionStat extends BaseEntity implements IBulkActionStat {
       successfulRecords: this.successfulRecords,
       failedRecords: this.failedRecords,
       skippedRecords: this.skippedRecords,
-      duplicateRecords: this.duplicateRecords,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     };

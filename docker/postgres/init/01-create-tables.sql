@@ -33,8 +33,7 @@ CREATE TABLE IF NOT EXISTS bulk_actions (
     -- Status and progress
     status VARCHAR(20) DEFAULT 'queued' CHECK (status IN ('queued', 'processing', 'completed', 'failed', 'cancelled', 'scheduled', 'validating')),
     total_entities INTEGER DEFAULT 0,
-    processed_entities INTEGER DEFAULT 0,
-
+    
     -- Timing
     scheduled_at TIMESTAMP WITH TIME ZONE,
     started_at TIMESTAMP WITH TIME ZONE,
@@ -69,13 +68,6 @@ CREATE TABLE IF NOT EXISTS bulk_action_stats (
     successful_records INTEGER DEFAULT 0,
     failed_records INTEGER DEFAULT 0,
     skipped_records INTEGER DEFAULT 0,
-    duplicate_records INTEGER DEFAULT 0,
-
-    -- Error breakdown
-    validation_errors INTEGER DEFAULT 0,
-    database_errors INTEGER DEFAULT 0,
-    business_logic_errors INTEGER DEFAULT 0,
-    system_errors INTEGER DEFAULT 0,
 
     -- Timestamps
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

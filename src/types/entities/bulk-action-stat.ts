@@ -10,7 +10,6 @@ export interface IBulkActionStat extends IEntity {
   successfulRecords: number;
   failedRecords: number;
   skippedRecords: number;
-  duplicateRecords: number;
 }
 
 export interface BulkActionStatCreateData {
@@ -19,7 +18,6 @@ export interface BulkActionStatCreateData {
   successfulRecords?: number;
   failedRecords?: number;
   skippedRecords?: number;
-  duplicateRecords?: number;
 }
 
 export interface BulkActionStatUpdateData {
@@ -27,7 +25,6 @@ export interface BulkActionStatUpdateData {
   successfulRecords?: number;
   failedRecords?: number;
   skippedRecords?: number;
-  duplicateRecords?: number;
 }
 
 export interface BulkActionStatRow {
@@ -37,7 +34,6 @@ export interface BulkActionStatRow {
   successful_records: number;
   failed_records: number;
   skipped_records: number;
-  duplicate_records: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -48,7 +44,6 @@ export interface BulkActionStatSummary {
   successfulRecords: number;
   failedRecords: number;
   skippedRecords: number;
-  duplicateRecords: number;
   createdAt?: Date;
   updatedAt?: Date;
 }

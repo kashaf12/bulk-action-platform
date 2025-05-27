@@ -690,7 +690,6 @@ export class ChunkingWorker extends EventEmitter {
         totalRecords: serviceResult.totalRecords,
         validRecords: serviceResult.validRecords,
         invalidRecords: serviceResult.invalidRecords,
-        duplicateRecords: serviceResult.duplicateRecords,
         skippedRecords: serviceResult.skippedRecords,
       },
 
@@ -748,7 +747,6 @@ export class ChunkingWorker extends EventEmitter {
         totalRecords: 0,
         validRecords: 0,
         invalidRecords: 0,
-        duplicateRecords: 0,
         skippedRecords: 0,
       },
 

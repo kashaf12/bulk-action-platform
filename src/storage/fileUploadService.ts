@@ -304,40 +304,4 @@ export class FileUploadService {
 
     return estimatedEntities;
   }
-
-  /**
-   * Get upload progress (for potential future use with chunked uploads)
-   */
-  public async getUploadProgress(
-    id: string,
-    traceId: string
-  ): Promise<{
-    status: string;
-    progress: number;
-    message: string;
-  }> {
-    const log = logger.withTrace(traceId);
-
-    try {
-      // Get bulk action status
-      const bulkAction = await this.bulkActionService.getBulkActionById(id, traceId);
-
-      const progress =
-        bulkAction.totalEntities > 0
-          ? Math.round((bulkAction.processedEntities / bulkAction.totalEntities) * 100)
-          : 0;
-
-      return {
-        status: bulkAction.status,
-        progress,
-        message: `Processing ${bulkAction.processedEntities} of ${bulkAction.totalEntities} entities`,
-      };
-    } catch (error) {
-      log.error('Failed to get upload progress', {
-        error: error instanceof Error ? error.message : String(error),
-        id,
-      });
-      throw error;
-    }
-  }
 }
