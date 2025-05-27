@@ -1,13 +1,3 @@
-server:
-  http_listen_port: 9080
-  grpc_listen_port: 0
-
-positions:
-  filename: /tmp/positions.yaml
-
-clients:
-  - url: http://loki:3100/loki/api/v1/push
-
 scrape_configs:
   - job_name: system_logs
     static_configs:
@@ -17,30 +7,49 @@ scrape_configs:
           job: varlogs
           __path__: /var/log/*log
 
-  - job_name: docker_logs
+  - job_name: docker_logs # This name is fine
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 5s
-        # Filter to include only logs from your application services
-        # You can add more services here
-        # e.g., 'name=^api$|name=^chunking$|name=^processing$|name=^postgres$|name=^redis$|name=^minio$'
-        # It's better to add the specific service names you want to monitor,
-        # this example assumes your services are named `api`, `chunking`, `processing`.
-        # Make sure to update the regex if your service names are different.
         filters:
+          # Use regex to match container names that end with your service names.
+          # This accounts for the docker-compose project prefix.
+          # The '.*-' part matches the project prefix and any replica numbering.
+          # For explicitly named containers like 'bulk-action-postgres', list them directly.
           - name: name
-            values: ['api', 'chunking', 'processing', 'postgres', 'minio']
+            values:
+              - '.*-api-.*' # Matches bulk-action-platform-api-1
+              - '.*-chunking-workers-.*' # Matches bulk-action-platform-chunking-workers-1
+              - '.*-processing-workers-.*' # Matches bulk-action-platform-processing-workers-1
+              - 'bulk-action-postgres' # Matches your explicitly named postgres container
+              - 'bulk-action-redis' # Matches your explicitly named redis container
+              - 'bulk-action-minio' # Matches your explicitly named minio container
+              - 'bulk-action-platform-db-seed-.*' # For db-seed, assuming project prefix
+              - 'bulk-action-pgadmin' # Matches your explicitly named pgadmin container
+              - 'bulk-action-platform-minio-init-.*' # For minio-init, assuming project prefix
+              - 'bulk-action-loki' # Matches your explicitly named loki container
+              - 'bulk-action-grafana' # Matches your explicitly named grafana container
+              - 'bulk-action-promtail' # Matches your explicitly named promtail container
     relabel_configs:
+      # Extract the full container name to 'container_name' label
       - source_labels: ['__meta_docker_container_name']
-        regex: '/(.*)'
+        regex: '^/(.*)'
         target_label: 'container_name'
+      # Extract the image name to 'image' label
       - source_labels: ['__meta_docker_image']
         regex: '(.*)'
         target_label: 'image'
+      # Extract the container ID to 'instance' label
       - source_labels: ['__meta_docker_container_id']
         target_label: 'instance'
+      # Extract the log stream (stdout/stderr) to 'log_stream' label
       - source_labels: ['__meta_docker_log_stream']
         target_label: 'log_stream'
+      # CRITICAL: Extract the 'job' label (your service name) from the full container name
       - source_labels: ['__meta_docker_container_name']
-        regex: '^/(.*)'
+        # Replace 'bulk-action-platform' with YOUR ACTUAL DOCKER COMPOSE PROJECT NAME
+        # This regex matches the project prefix, then captures your service name,
+        # and then matches the rest of the container name (e.g., replica ID).
+        regex: '^/bulk-action-platform-(api|chunking-workers|processing-workers|postgres|redis|minio|db-seed|pgadmin|minio-init|loki|grafana|promtail)(?:-.*)?$'
         target_label: 'job'
+        action: replace # Ensure this action is 'replace' to set the label
