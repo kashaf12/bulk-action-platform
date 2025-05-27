@@ -7,10 +7,12 @@ WORKDIR /app
 # Install system dependencies
 RUN apk add --no-cache curl postgresql-client
 
-# Install only production deps (faker & pg should be listed in package.json under dependencies)
-RUN npm install @faker-js/faker pg uuid
+RUN npm install pg csv-parser
 
 # Copy seed script
+COPY seed_data/contacts.csv ./seed_data/contacts.csv
+COPY seed_data/bulk-action-stats.csv ./seed_data/bulk-action-stats.csv
+COPY seed_data/bulk-actions.csv ./seed_data/bulk-actions.csv
 COPY scripts/seed-database.js ./seed-database.js
 
 # Create wait script for database readiness

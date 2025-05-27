@@ -1,7 +1,7 @@
-// seed.js
-const { faker } = require('@faker-js/faker');
 const { Client } = require('pg');
-const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+const csv = require('csv-parser');
+const path = require('path');
 
 // Configuration
 const config = {
@@ -12,32 +12,17 @@ const config = {
   password: process.env.DB_PASSWORD || 'password123',
 };
 
-// Seed for deterministic faker data generation
-// You can make this an environment variable if you want to easily change it
-const FAKER_SEED = parseInt(process.env.FAKER_SEED) || 123; // Use a fixed seed for consistent data
+const BATCH_SIZE = 1000; // Increased batch size for CSV ingestion
 
-const SEED_CONTACTS = parseInt(process.env.SEED_CONTACTS) || 1000;
-const SEED_BULK_ACTIONS = parseInt(process.env.SEED_BULK_ACTIONS) || 50;
-const BATCH_SIZE = 100;
+// CSV file paths (optional - if set, data will be read from these files)
+const CONTACTS_CSV_PATH = path.resolve('../seed_data/contacts.csv');
 
-const TEST_ACCOUNTS = [
-  'test-account-1',
-  'test-account-2',
-  'test-account-3',
-  'load-test-account',
-  'demo-account',
-  'performance-test-1',
-  'performance-test-2',
-  'rate-limit-test-1',
-  'rate-limit-test-2',
-  'integration-test',
-];
+const BULK_ACTIONS_CSV_PATH = path.resolve('../seed_data/bulk-actions.csv');
+const BULK_ACTION_STATS_CSV_PATH = path.resolve('../seed_data/bulk-action-stats.csv');
 
 class DatabaseSeeder {
   constructor() {
     this.client = new Client(config);
-    // Set the faker seed here so all subsequent faker calls are deterministic
-    faker.seed(FAKER_SEED);
   }
 
   async connect() {
@@ -51,258 +36,212 @@ class DatabaseSeeder {
   }
 
   async clearExistingData() {
-    // Clear bulk_action_stats first due to foreign key constraint
-    await this.client.query(
-      'DELETE FROM bulk_action_stats WHERE action_id IN (SELECT id FROM bulk_actions WHERE account_id LIKE $1)',
-      ['%test%']
-    );
-    await this.client.query('DELETE FROM bulk_actions WHERE account_id LIKE $1', ['%test%']);
-    // We need to be careful with contacts. If contacts don't have an account_id,
-    // deleting all contacts might affect non-test data.
-    // For deterministic IDs for contacts, we will also generate them.
-    // To ensure the same contacts are inserted each time, we will replace the full DELETE
-    // with an upsert (ON CONFLICT DO UPDATE) or selectively delete based on generated IDs if needed.
-    // For now, let's assume `DELETE FROM contacts` is acceptable if you're always starting fresh for tests.
-    // If you need to preserve other contacts, you'd need a more sophisticated cleanup strategy.
-    await this.client.query('DELETE FROM contacts WHERE email LIKE $1', ['%@example.com']); // Assuming seeded emails use example.com
-    console.log('🧹 Cleared previous test data');
+    console.log('🧹 Clearing ALL existing data...');
+    try {
+      // 1. Clear bulk_action_stats first (child table of bulk_actions)
+      await this.client.query('DELETE FROM bulk_action_stats;');
+      console.log('  Cleared bulk_action_stats.');
+
+      // 2. Clear bulk_actions (parent of stats)
+      await this.client.query('DELETE FROM bulk_actions;');
+      console.log('  Cleared bulk_actions.');
+
+      // 3. Clear contacts
+      await this.client.query('DELETE FROM contacts;');
+      console.log('  Cleared contacts.');
+
+      console.log('✅ ALL previous data cleared successfully.');
+    } catch (error) {
+      console.error('❌ Error clearing data:', error.message);
+      throw error; // Re-throw to stop the seeding process if cleanup fails
+    }
   }
 
-  async seedContacts() {
-    console.log(`👥 Seeding ${SEED_CONTACTS} contacts...`);
+  /**
+   * Helper function to read data from a CSV file.
+   * @param {string} filePath - The path to the CSV file.
+   * @returns {Promise<Array<Object>>} A promise that resolves with an array of parsed CSV rows.
+   */
+  async readCsv(filePath) {
+    return new Promise((resolve, reject) => {
+      const results = [];
+      if (!fs.existsSync(filePath)) {
+        return reject(new Error(`Input file not found: ${filePath}`));
+      }
+      fs.createReadStream(filePath)
+        .pipe(csv())
+        .on('data', data => results.push(data))
+        .on('end', () => resolve(results))
+        .on('error', err => reject(err));
+    });
+  }
 
-    // To ensure deterministic UUIDs for contacts, we need to generate them deterministically
-    // based on the faker seed or a sequential counter
-    // For simplicity, let's make contact IDs based on a deterministic email or a sequential counter
-    // For real UUIDs, we'd need a deterministic UUID generator or pre-defined UUIDs.
-    // Given the request is to keep primary keys "same", for UUIDs, we'd typically need
-    // to map a deterministic input to a UUID. For now, we'll use a sequential ID for contacts.
+  // --- Contact Seeding ---
 
-    // If your contact table has an auto-incrementing ID, then its ID will naturally
-    // be consistent if the data inserted is always the same.
-    // If you need a UUID for contacts, you'd generate it deterministically like this:
-    // const uniqueContactIdentifier = `contact-${faker.string.uuid()}`; // this won't be deterministic without faker.seed on uuid()
-    // For deterministic UUIDs, you might consider a library like 'uuid-js' or generate based on a seeded hash.
-    // A simpler approach for consistent IDs is to use a sequential counter if your DB allows it.
-    // Since your schema uses UUID for bulk_actions but not contacts, we'll assume contacts have
-    // a serial primary key or you can manage their IDs deterministically.
-    // For `contacts`, we'll make their emails deterministic so `ON CONFLICT (email) DO NOTHING` works consistently.
+  async seedContactsFromCsv() {
+    console.log(`👥 Seeding contacts from ${CONTACTS_CSV_PATH}...`);
+    try {
+      const contacts = await this.readCsv(CONTACTS_CSV_PATH);
+      if (contacts.length === 0) {
+        console.warn('⚠️ No contacts found in CSV. Skipping contact seeding.');
+        return;
+      }
 
-    for (let i = 0; i < SEED_CONTACTS; i += BATCH_SIZE) {
-      const contacts = [];
+      for (let i = 0; i < contacts.length; i += BATCH_SIZE) {
+        const batch = contacts.slice(i, i + BATCH_SIZE);
+        const valuesPlaceholders = batch
+          .map(
+            (_, index) =>
+              `($${index * 3 + 1}, $${index * 3 + 2}, $${index * 3 + 3}), $${index * 3 + 4})`
+          )
+          .join(', ');
 
-      for (let j = 0; j < Math.min(BATCH_SIZE, SEED_CONTACTS - i); j++) {
-        // Use a deterministic email format
-        const deterministicEmail = `contact${i + j}@example.com`;
-        contacts.push([
-          faker.person.fullName(), // Name can still be random but linked to the seed
-          deterministicEmail,
-          faker.number.int({ min: 18, max: 80 }),
+        const flatParams = batch.flatMap(row => [
+          row.id,
+          row.name,
+          row.email,
+          parseInt(row.age) || null,
         ]);
+
+        const query = `
+          INSERT INTO contacts (id, name, email, age)
+          VALUES ${valuesPlaceholders}
+          ON CONFLICT (email) DO NOTHING;
+        `;
+        await this.client.query(query, flatParams);
+        console.log(
+          `  Processed ${Math.min(i + BATCH_SIZE, contacts.length)}/${contacts.length} contacts.`
+        );
       }
-
-      const valuesPlaceholders = contacts
-        .map((_, index) => `($${index * 3 + 1}, $${index * 3 + 2}, $${index * 3 + 3})`)
-        .join(', ');
-      const flatParams = contacts.flat();
-
-      const query = `
-        INSERT INTO contacts (name, email, age)
-        VALUES ${valuesPlaceholders}
-        ON CONFLICT (email) DO NOTHING
-      `;
-
-      await this.client.query(query, flatParams);
+      console.log(`✅ ${contacts.length} contacts seeded from CSV.`);
+    } catch (error) {
+      console.error(`❌ Error seeding contacts from CSV: ${error.message}`);
+      throw error;
     }
-
-    console.log(`✅ Contacts seeded`);
   }
 
-  async seedBulkActions() {
-    console.log('⚙️  Seeding bulk actions and stats...');
+  // --- Bulk Action and Stats Seeding ---
 
-    const statuses = [
-      'completed',
-      'failed',
-      'processing',
-      'queued',
-      'cancelled',
-      'scheduled',
-      'validating',
-    ];
-
-    // To ensure same UUIDs for bulk actions, we need a deterministic way to generate them.
-    // We'll use a seeded faker for the parts that make up the UUID or pre-generate a list.
-    // Since `uuidv4()` is inherently random, we need to bypass it for deterministic IDs.
-    // The easiest way to get deterministic UUIDs with faker is to use `faker.string.uuid()`
-    // after seeding faker.
-
-    for (let i = 0; i < SEED_BULK_ACTIONS; i++) {
-      // Use faker.string.uuid() which respects the faker seed for deterministic UUIDs
-      const actionId = faker.string.uuid();
-      const accountId = faker.helpers.arrayElement(TEST_ACCOUNTS);
-      const status = faker.helpers.arrayElement(statuses);
-      const totalEntities = faker.number.int({ min: 100, max: 5000 });
-      let startedAt = null;
-      let completedAt = null;
-      let errorMessage = null;
-      let scheduledAt = null;
-      let processedEntities = 0;
-
-      switch (status) {
-        case 'completed':
-          processedEntities = totalEntities;
-          startedAt = faker.date.recent({ days: 7 });
-          completedAt = new Date(
-            startedAt.getTime() + faker.number.int({ min: 30000, max: 600000 })
-          );
-          break;
-        case 'failed':
-          processedEntities = faker.number.int({ min: 0, max: totalEntities - 1 });
-          startedAt = faker.date.recent({ days: 5 });
-          completedAt = new Date(
-            startedAt.getTime() + faker.number.int({ min: 10000, max: 180000 })
-          );
-          errorMessage = faker.lorem.sentence();
-          break;
-        case 'processing':
-          processedEntities = faker.number.int({ min: 0, max: totalEntities });
-          startedAt = faker.date.recent({ days: 2 });
-          break;
-        case 'cancelled':
-          processedEntities = faker.number.int({ min: 0, max: totalEntities / 2 });
-          startedAt = faker.date.recent({ days: 3 });
-          completedAt = new Date(
-            startedAt.getTime() + faker.number.int({ min: 5000, max: 120000 })
-          );
-          break;
-        case 'queued':
-          scheduledAt = faker.date.future({ years: 0.1 });
-          break;
-        case 'scheduled':
-          scheduledAt = faker.date.future({ years: 0.1 });
-          break;
-        case 'validating':
-          startedAt = faker.date.recent({ days: 1 });
-          break;
-        default:
-          break;
+  async seedBulkActionsFromCsv() {
+    console.log(`⚙️  Seeding bulk actions from ${BULK_ACTIONS_CSV_PATH}...`);
+    try {
+      const bulkActions = await this.readCsv(BULK_ACTIONS_CSV_PATH);
+      if (bulkActions.length === 0) {
+        console.warn('⚠️ No bulk actions found in CSV. Skipping bulk action seeding.');
+        return;
       }
 
-      const configuration = {
-        deduplication: faker.datatype.boolean(),
-      };
+      for (let i = 0; i < bulkActions.length; i += BATCH_SIZE) {
+        const batch = bulkActions.slice(i, i + BATCH_SIZE);
+        const valuesPlaceholders = batch
+          .map((_, index) => {
+            const numColumns = 13; // Number of columns in bulk_actions table
+            return `(${Array.from({ length: numColumns }, (_, idx) => `$${index * numColumns + idx + 1}`).join(', ')})`;
+          })
+          .join(', ');
 
-      const filePath = `/uploads/${accountId}/${actionId}.csv`;
+        const flatParams = batch.flatMap(row => [
+          row.id,
+          row.account_id,
+          row.entity_type,
+          row.action_type,
+          row.status,
+          parseInt(row.total_entities) || 0,
+          row.scheduled_at ? new Date(row.scheduled_at) : null,
+          row.started_at ? new Date(row.started_at) : null,
+          row.completed_at ? new Date(row.completed_at) : null,
+          row.configuration ? JSON.parse(row.configuration) : {},
+          row.error_message || null,
+          row.file_path,
+          parseInt(row.file_size) || 0,
+        ]);
 
-      const actionInsert = `
-        INSERT INTO bulk_actions (
-          id, account_id, entity_type, action_type, status,
-          total_entities, scheduled_at, started_at, completed_at,
-          configuration, error_message, file_path, file_size,
-          batch_size, retry_count, max_retries, priority
-        ) VALUES (
-          $1, $2, 'contact', 'bulk_update', $3,
-          $4, $5, $6, $7, $8,
-          $9, $10, $11, $12,
-          $13, $14, $15
-        )
-        ON CONFLICT (id) DO UPDATE SET
-          account_id = EXCLUDED.account_id,
-          entity_type = EXCLUDED.entity_type,
-          action_type = EXCLUDED.action_type,
-          status = EXCLUDED.status,
-          total_entities = EXCLUDED.total_entities,
-          scheduled_at = EXCLUDED.scheduled_at,
-          started_at = EXCLUDED.started_at,
-          completed_at = EXCLUDED.completed_at,
-          configuration = EXCLUDED.configuration,
-          error_message = EXCLUDED.error_message,
-          file_path = EXCLUDED.file_path,
-          file_size = EXCLUDED.file_size,
-          batch_size = EXCLUDED.batch_size,
-          retry_count = EXCLUDED.retry_count,
-          max_retries = EXCLUDED.max_retries,
-          priority = EXCLUDED.priority
-      `;
-
-      const bulkActionParams = [
-        actionId,
-        accountId,
-        status,
-        totalEntities,
-        scheduledAt,
-        startedAt,
-        completedAt,
-        JSON.stringify(configuration),
-        errorMessage,
-        filePath,
-        faker.number.int({ min: 1000, max: 1e6 }),
-        faker.helpers.arrayElement([500, 1000, 2000]),
-        status === 'failed' ? faker.number.int({ min: 1, max: 3 }) : 0,
-        3,
-        faker.number.int({ min: 1, max: 10 }),
-      ];
-
-      await this.client.query(actionInsert, bulkActionParams);
-
-      // Seed bulk_action_stats
-      let successfulRecords = 0;
-      let failedRecords = 0;
-      let skippedRecords = 0;
-
-      if (status === 'completed') {
-        successfulRecords = totalEntities;
-      } else if (status === 'failed') {
-        successfulRecords = processedEntities;
-        failedRecords = totalEntities - processedEntities;
-        skippedRecords = faker.number.int({ min: 0, max: Math.floor(failedRecords / 2) });
-      } else if (status === 'cancelled') {
-        successfulRecords = processedEntities;
-        skippedRecords = totalEntities - processedEntities;
-      } else if (status === 'processing' || status === 'validating') {
-        successfulRecords = processedEntities;
-        failedRecords = faker.number.int({ min: 0, max: Math.floor(totalEntities / 5) });
-        skippedRecords = faker.number.int({ min: 0, max: Math.floor(totalEntities / 10) });
-      } else {
-        successfulRecords = 0;
-        failedRecords = 0;
-        skippedRecords = 0;
+        const query = `
+          INSERT INTO bulk_actions (
+            id, account_id, entity_type, action_type, status,
+            total_entities, scheduled_at, started_at, completed_at,
+            configuration, error_message
+          ) VALUES ${valuesPlaceholders}
+          ON CONFLICT (id) DO UPDATE SET
+            account_id = EXCLUDED.account_id,
+            entity_type = EXCLUDED.entity_type,
+            action_type = EXCLUDED.action_type,
+            status = EXCLUDED.status,
+            total_entities = EXCLUDED.total_entities,
+            scheduled_at = EXCLUDED.scheduled_at,
+            started_at = EXCLUDED.started_at,
+            completed_at = EXCLUDED.completed_at,
+            configuration = EXCLUDED.configuration,
+            error_message = EXCLUDED.error_message,
+            file_path = EXCLUDED.file_path,
+            file_size = EXCLUDED.file_size
+        `;
+        await this.client.query(query, flatParams);
+        console.log(
+          `  Processed ${Math.min(i + BATCH_SIZE, bulkActions.length)}/${bulkActions.length} bulk actions.`
+        );
       }
-
-      const statsInsert = `
-        INSERT INTO bulk_action_stats (
-          action_id, total_records, successful_records, failed_records, skipped_records
-        ) VALUES (
-          $1, $2, $3, $4, $5
-        )
-        ON CONFLICT (action_id) DO UPDATE SET
-          total_records = EXCLUDED.total_records,
-          successful_records = EXCLUDED.successful_records,
-          failed_records = EXCLUDED.failed_records,
-          skipped_records = EXCLUDED.skipped_records
-      `;
-
-      const statsParams = [
-        actionId,
-        totalEntities,
-        successfulRecords,
-        failedRecords,
-        skippedRecords,
-      ];
-
-      await this.client.query(statsInsert, statsParams);
+      console.log(`✅ ${bulkActions.length} bulk actions seeded from CSV.`);
+    } catch (error) {
+      console.error(`❌ Error seeding bulk actions from CSV: ${error.message}`);
+      throw error;
     }
+  }
 
-    console.log('✅ Bulk actions + stats seeded');
+  async seedBulkActionStatsFromCsv() {
+    console.log(`📊 Seeding bulk action stats from ${BULK_ACTION_STATS_CSV_PATH}...`);
+    try {
+      const stats = await this.readCsv(BULK_ACTION_STATS_CSV_PATH);
+      if (stats.length === 0) {
+        console.warn('⚠️ No bulk action stats found in CSV. Skipping stats seeding.');
+        return;
+      }
+
+      for (let i = 0; i < stats.length; i += BATCH_SIZE) {
+        const batch = stats.slice(i, i + BATCH_SIZE);
+        const valuesPlaceholders = batch
+          .map((_, index) => {
+            const numColumns = 5; // action_id, total_records, successful_records, failed_records, skipped_records
+            return `(${Array.from({ length: numColumns }, (_, idx) => `$${index * numColumns + idx + 1}`).join(', ')})`;
+          })
+          .join(', ');
+
+        const flatParams = batch.flatMap(row => [
+          row.action_id,
+          parseInt(row.total_records) || 0,
+          parseInt(row.successful_records) || 0,
+          parseInt(row.failed_records) || 0,
+          parseInt(row.skipped_records) || 0,
+        ]);
+
+        const query = `
+          INSERT INTO bulk_action_stats (
+            action_id, total_records, successful_records, failed_records, skipped_records
+          ) VALUES ${valuesPlaceholders}
+          ON CONFLICT (action_id) DO UPDATE SET
+            total_records = EXCLUDED.total_records,
+            successful_records = EXCLUDED.successful_records,
+            failed_records = EXCLUDED.failed_records,
+            skipped_records = EXCLUDED.skipped_records;
+        `;
+        await this.client.query(query, flatParams);
+        console.log(
+          `  Processed ${Math.min(i + BATCH_SIZE, stats.length)}/${stats.length} bulk action stats.`
+        );
+      }
+      console.log(`✅ ${stats.length} bulk action stats seeded from CSV.`);
+    } catch (error) {
+      console.error(`❌ Error seeding bulk action stats from CSV: ${error.message}`);
+      throw error;
+    }
   }
 
   async run() {
     try {
       await this.connect();
       await this.clearExistingData();
-      await this.seedContacts();
-      await this.seedBulkActions();
+      await this.seedContactsFromCsv();
+      await this.seedBulkActionsFromCsv(); // This method now conditionally calls faker or CSV methods
     } catch (err) {
       console.error('❌ Seeding failed:', err.message);
       if (err.detail) {

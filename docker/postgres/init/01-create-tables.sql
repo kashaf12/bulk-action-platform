@@ -48,12 +48,6 @@ CREATE TABLE IF NOT EXISTS bulk_actions (
     -- Metadata
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-
-    -- Additional processing info
-    batch_size INTEGER DEFAULT 1000,
-    retry_count INTEGER DEFAULT 0,
-    max_retries INTEGER DEFAULT 3,
-    priority INTEGER DEFAULT 5 CHECK (priority >= 1 AND priority <= 10)
 );
 
 -- =====================================================

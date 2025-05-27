@@ -4,10 +4,10 @@ import { createObjectCsvWriter } from 'csv-writer';
 import path from 'path';
 console.log('Current script path:', process.cwd());
 
-const inputFile = path.resolve('./seed_data/contact-100000.csv');
-const outputFile = path.resolve('./seed_data/updated-contact-100000.csv');
+const inputFile = path.resolve('./seed_data/contacts.csv');
+const outputFile = path.resolve('./seed_data/updated-contacts.csv');
 
-const max_rows = 100_000;
+const max_rows = 10_000;
 
 // Generate random alphanumeric string
 const randomString = (length = 10) =>
