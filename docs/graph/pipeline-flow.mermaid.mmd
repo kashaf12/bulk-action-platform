@@ -1,0 +1,118 @@
+graph TD
+    subgraph "Phase 1: API Request & Upload"
+        A[Client Uploads CSV] --> B[Load Balancer]
+        B --> C[API Server]
+        C --> D{Authentication &<br/>Rate Limiting}
+        D -->|Pass| E[MinIO Upload<br/>Middleware]
+        D -->|Fail| F[4xx Error Response]
+        E --> G[File Uploaded<br/>to MinIO]
+        G --> H[Create Bulk Action<br/>in Database]
+        H --> I[Initialize Statistics]
+        I --> J[Enqueue Chunking Job]
+        J --> K[Return 201 Created<br/>with Job ID]
+    end
+    
+    subgraph "Phase 2: Chunking Worker Processing"
+        L[Chunking Worker<br/>Picks Up Job] --> M[Download CSV<br/>from MinIO]
+        M --> N[Stream & Validate<br/>CSV Structure]
+        N --> O{Valid CSV?}
+        O -->|No| P[Update Status: Failed<br/>Return Error Result]
+        O -->|Yes| Q[Process Rows:<br/>Validation & Deduplication]
+        Q --> R[Create Consistent<br/>Hash Chunks]
+        R --> S[Upload Chunks<br/>to MinIO]
+        S --> T[Update Bulk Action<br/>Status: Processing]
+        T --> U[Enqueue Processing Jobs<br/>for Each Chunk]
+        U --> V[Return Chunking<br/>Success Result]
+    end
+    
+    subgraph "Phase 3: Processing Workers (Parallel)"
+        W1[Processing Worker P0<br/>Chunk 0] --> X1[Download Chunk<br/>from MinIO]
+        W2[Processing Worker P1<br/>Chunk 1] --> X2[Download Chunk<br/>from MinIO]
+        W3[Processing Worker P2<br/>Chunk 2] --> X3[Download Chunk<br/>from MinIO]
+        
+        X1 --> Y1[Stream Process<br/>in Batches]
+        X2 --> Y2[Stream Process<br/>in Batches]
+        X3 --> Y3[Stream Process<br/>in Batches]
+        
+        Y1 --> Z1[Database Operations<br/>Bulk Update/Insert]
+        Y2 --> Z2[Database Operations<br/>Bulk Update/Insert]
+        Y3 --> Z3[Database Operations<br/>Bulk Update/Insert]
+        
+        Z1 --> AA1[Update Statistics<br/>Counters]
+        Z2 --> AA2[Update Statistics<br/>Counters]
+        Z3 --> AA3[Update Statistics<br/>Counters]
+    end
+    
+    subgraph "Phase 4: Completion & Monitoring"
+        BB[All Chunks Processed] --> CC{Check Total<br/>Progress}
+        CC -->|Complete| DD[Update Bulk Action<br/>Status: Completed]
+        CC -->|Partial| EE[Continue Processing<br/>Remaining Chunks]
+        DD --> FF[Final Statistics<br/>Updated]
+        FF --> GG[Processing Complete<br/>Available via API]
+    end
+    
+    subgraph "Error Handling & Recovery"
+        HH[Processing Errors] --> II{Retryable?}
+        II -->|Yes| JJ[Exponential Backoff<br/>Retry Job]
+        II -->|No| KK[Mark as Failed<br/>Update Statistics]
+        JJ --> LL[Retry Attempt]
+        LL --> MM{Retry Success?}
+        MM -->|Yes| NN[Continue Processing]
+        MM -->|No| OO[Max Retries Reached<br/>Mark as Failed]
+    end
+    
+    subgraph "Monitoring & Observability"
+        PP[Structured Logging<br/>Winston + Loki]
+        QQ[Metrics Collection<br/>Job Progress, Rates]
+        RR[Health Checks<br/>Worker Status]
+        SS[Distributed Tracing<br/>Correlation IDs]
+    end
+    
+    %% Connections between phases
+    K --> L
+    V --> W1
+    V --> W2
+    V --> W3
+    
+    AA1 --> BB
+    AA2 --> BB
+    AA3 --> BB
+    
+    %% Error connections
+    P --> HH
+    OO --> KK
+    
+    %% Monitoring connections
+    C -.-> PP
+    L -.-> PP
+    W1 -.-> PP
+    W2 -.-> PP
+    W3 -.-> PP
+    
+    L -.-> QQ
+    W1 -.-> QQ
+    W2 -.-> QQ
+    W3 -.-> QQ
+    
+    C -.-> RR
+    L -.-> RR
+    W1 -.-> RR
+    
+    C -.-> SS
+    L -.-> SS
+    W1 -.-> SS
+    
+    %% Styling
+    classDef apiPhase fill:#e3f2fd
+    classDef chunkingPhase fill:#fff3e0
+    classDef processingPhase fill:#e8f5e8
+    classDef completionPhase fill:#f3e5f5
+    classDef errorPhase fill:#ffebee
+    classDef monitoringPhase fill:#fce4ec
+    
+    class A,B,C,D,E,F,G,H,I,J,K apiPhase
+    class L,M,N,O,P,Q,R,S,T,U,V chunkingPhase
+    class W1,W2,W3,X1,X2,X3,Y1,Y2,Y3,Z1,Z2,Z3,AA1,AA2,AA3 processingPhase
+    class BB,CC,DD,EE,FF,GG completionPhase
+    class HH,II,JJ,KK,LL,MM,NN,OO errorPhase
+    class PP,QQ,RR,SS monitoringPhase

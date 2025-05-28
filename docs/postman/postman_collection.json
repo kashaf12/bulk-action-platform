@@ -1,0 +1,327 @@
+{
+	"info": {
+		"_postman_id": "752631f0-037e-43ea-b284-b7b0a2e9ec7c",
+		"name": "Bulk Actions",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "7397382"
+	},
+	"item": [
+		{
+			"name": "Docs",
+			"item": [
+				{
+					"name": "Docs",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base-url}}/docs",
+							"host": [
+								"{{base-url}}"
+							],
+							"path": [
+								"docs"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Health Check",
+			"item": [
+				{
+					"name": "Health",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base-url}}/health",
+							"host": [
+								"{{base-url}}"
+							],
+							"path": [
+								"health"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Detailed",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base-url}}/health/detailed",
+							"host": [
+								"{{base-url}}"
+							],
+							"path": [
+								"health",
+								"detailed"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Ready",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base-url}}/health/ready",
+							"host": [
+								"{{base-url}}"
+							],
+							"path": [
+								"health",
+								"ready"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Live",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base-url}}/health/live",
+							"host": [
+								"{{base-url}}"
+							],
+							"path": [
+								"health",
+								"live"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Root",
+			"item": [
+				{
+					"name": "Root",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base-url}}",
+							"host": [
+								"{{base-url}}"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Bulk Actions",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// Parse the JSON response",
+							"var jsonData = pm.response.json();",
+							"",
+							"// Check if the 'data' array exists and has at least one element",
+							"if (jsonData && jsonData.data && jsonData.data.length > 0) {",
+							"    // Get the first actionId",
+							"    var firstActionId = jsonData.data[0].id;",
+							"",
+							"    // Store it as an environment variable",
+							"    pm.environment.set(\"actionId\", firstActionId);",
+							"",
+							"    // Optional: Log the actionId to the Postman Console for verification",
+							"    console.log(\"First actionId:\", firstActionId);",
+							"} else {",
+							"    console.log(\"No data found or data array is empty.\");",
+							"}"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "account-id",
+						"value": "{{accountId}}",
+						"type": "text"
+					},
+					{
+						"key": "page",
+						"value": "2",
+						"type": "text",
+						"disabled": true
+					}
+				],
+				"url": {
+					"raw": "{{base-url}}/bulk-actions",
+					"host": [
+						"{{base-url}}"
+					],
+					"path": [
+						"bulk-actions"
+					],
+					"query": [
+						{
+							"key": "page",
+							"value": "2",
+							"disabled": true
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Bulk Action with actionId",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "GET",
+				"header": [
+					{
+						"key": "account-id",
+						"value": "{{accountId}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{base-url}}/bulk-actions/{{actionId}}",
+					"host": [
+						"{{base-url}}"
+					],
+					"path": [
+						"bulk-actions",
+						"{{actionId}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Bulk Action Stats",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "GET",
+				"header": [
+					{
+						"key": "account-id",
+						"value": "{{accountId}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{base-url}}/bulk-actions/{{actionId}}/stats",
+					"host": [
+						"{{base-url}}"
+					],
+					"path": [
+						"bulk-actions",
+						"{{actionId}}",
+						"stats"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Bulk Action Upload CSV",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// Parse the JSON response",
+							"var jsonData = pm.response.json();",
+							"",
+							"// Check if the 'data' array exists and has at least one element",
+							"if (jsonData && jsonData.data) {",
+							"    // Get the first actionId",
+							"    var firstActionId = jsonData.data.id;",
+							"",
+							"    // Store it as an environment variable",
+							"    pm.environment.set(\"actionId\", firstActionId);",
+							"",
+							"    // Optional: Log the actionId to the Postman Console for verification",
+							"    console.log(\"First actionId:\", firstActionId);",
+							"} else {",
+							"    console.log(\"No data found or data array is empty.\");",
+							"}"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "account-id",
+						"value": "{{accountId}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "file",
+							"type": "file",
+							"src": []
+						},
+						{
+							"key": "entityType",
+							"value": "contact",
+							"type": "text"
+						},
+						{
+							"key": "actionType",
+							"value": "bulk_update",
+							"type": "text"
+						}
+					]
+				},
+				"url": {
+					"raw": "{{base-url}}/bulk-actions",
+					"host": [
+						"{{base-url}}"
+					],
+					"path": [
+						"bulk-actions"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

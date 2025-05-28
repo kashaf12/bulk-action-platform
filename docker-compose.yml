@@ -17,9 +17,9 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-redis}
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      - MAX_FILE_SIZE_MB=20
+      - MAX_FILE_SIZE_MB=10
       - MAX_CSV_ROWS=100001
-      - BULK_ACTION_RATE_LIMIT=10000
+      - RATE_LIMIT_MAX_REQUESTS=10000
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
@@ -571,7 +571,7 @@ services:
     container_name: promtail
     volumes:
       - /var/log:/var/log
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers
       - /var/run/docker.sock:/var/run/docker.sock
       - ./promtail:/etc/promtail
     command: -config.file=/etc/promtail/config.yaml

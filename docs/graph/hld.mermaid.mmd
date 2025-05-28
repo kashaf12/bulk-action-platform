@@ -1,0 +1,129 @@
+graph TB
+    %% Client Layer
+    Client[Client Application<br/>Web/Mobile/API Consumer]
+    
+    %% Load Balancer
+    LB[Load Balancer<br/>nginx/ALB]
+    
+    %% API Layer
+    subgraph "API Layer"
+        API1[API Server 1<br/>Express.js]
+        API2[API Server 2<br/>Express.js]
+        API3[API Server N<br/>Express.js]
+    end
+    
+    %% Core Services in API
+    subgraph "API Components"
+        Controllers[Controllers<br/>BulkActionController<br/>ContactController<br/>HealthController]
+        Services[Services<br/>BulkActionService<br/>ContactService<br/>ChunkingService]
+        Repositories[Repositories<br/>BulkActionRepository<br/>ContactRepository]
+        Middlewares[Middlewares<br/>Auth, Validation<br/>Rate Limiting, Security]
+    end
+    
+    %% Message Queue System
+    subgraph "Queue System"
+        Redis[(Redis<br/>BullMQ Backend)]
+        ChunkingQueue[Chunking Queue<br/>CSV Processing Jobs]
+        ProcessingQueue[Processing Queue<br/>Partitioned Queues<br/>0,1,2...N]
+    end
+    
+    %% Worker Layer
+    subgraph "Chunking Workers"
+        CW1[Chunking Worker 1<br/>CSV Validation<br/>Deduplication<br/>File Chunking]
+        CW2[Chunking Worker 2]
+        CW3[Chunking Worker N]
+    end
+    
+    subgraph "Processing Workers"
+        PW1[Processing Worker P0<br/>Batch Processing<br/>Database Operations]
+        PW2[Processing Worker P1]
+        PW3[Processing Worker P2]
+        PWN[Processing Worker PN]
+    end
+    
+    %% Storage Layer
+    subgraph "Storage Layer"
+        PostgreSQL[(PostgreSQL<br/>Primary Database<br/>- bulk_actions<br/>- bulk_action_stats<br/>- contacts)]
+        MinIO[(MinIO<br/>Object Storage<br/>- Original CSV Files<br/>- Chunked Files)]
+    end
+    
+    %% External Monitoring
+    subgraph "Observability"
+        Logs[Structured Logging<br/>Winston + Loki]
+        Metrics[Metrics Collection<br/>Application Metrics]
+        Tracing[Distributed Tracing<br/>Correlation IDs]
+    end
+    
+    %% Flow Connections
+    Client --> LB
+    LB --> API1
+    LB --> API2
+    LB --> API3
+    
+    API1 --> Controllers
+    API2 --> Controllers
+    API3 --> Controllers
+    
+    Controllers --> Middlewares
+    Controllers --> Services
+    Services --> Repositories
+    
+    %% Queue Connections
+    Services --> ChunkingQueue
+    ChunkingQueue --> Redis
+    ProcessingQueue --> Redis
+    
+    %% Worker Connections
+    ChunkingQueue --> CW1
+    ChunkingQueue --> CW2
+    ChunkingQueue --> CW3
+    
+    CW1 --> ProcessingQueue
+    CW2 --> ProcessingQueue
+    CW3 --> ProcessingQueue
+    
+    ProcessingQueue --> PW1
+    ProcessingQueue --> PW2
+    ProcessingQueue --> PW3
+    ProcessingQueue --> PWN
+    
+    %% Storage Connections
+    Repositories --> PostgreSQL
+    Services --> MinIO
+    CW1 --> MinIO
+    CW2 --> MinIO
+    CW3 --> MinIO
+    
+    PW1 --> PostgreSQL
+    PW2 --> PostgreSQL
+    PW3 --> PostgreSQL
+    PWN --> PostgreSQL
+    
+    %% Observability Connections
+    API1 -.-> Logs
+    API2 -.-> Logs
+    API3 -.-> Logs
+    CW1 -.-> Logs
+    CW2 -.-> Logs
+    CW3 -.-> Logs
+    PW1 -.-> Logs
+    PW2 -.-> Logs
+    PW3 -.-> Logs
+    PWN -.-> Logs
+    
+    API1 -.-> Metrics
+    CW1 -.-> Metrics
+    PW1 -.-> Metrics
+    
+    %% Styling
+    classDef apiLayer fill:#e1f5fe
+    classDef workerLayer fill:#f3e5f5
+    classDef storageLayer fill:#e8f5e8
+    classDef queueLayer fill:#fff3e0
+    classDef obsLayer fill:#fce4ec
+    
+    class API1,API2,API3,Controllers,Services,Repositories,Middlewares apiLayer
+    class CW1,CW2,CW3,PW1,PW2,PW3,PWN workerLayer
+    class PostgreSQL,MinIO storageLayer
+    class Redis,ChunkingQueue,ProcessingQueue queueLayer
+    class Logs,Metrics,Tracing obsLayer

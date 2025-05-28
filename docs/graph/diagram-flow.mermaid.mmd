@@ -1,0 +1,204 @@
+graph TB
+    subgraph "1. POST /bulk-actions - File Upload & Processing Flow"
+        direction TB
+        
+        Client1[Client] 
+        LB1[Load Balancer]
+        API1[API Server]
+        
+        subgraph "Middleware Chain"
+            Auth1[Authentication<br/>Middleware]
+            Rate1[Rate Limiting<br/>Middleware]
+            Upload1[MinIO Upload<br/>Middleware]
+            Validate1[Upload Validation<br/>Middleware]
+            ReqVal1[Request Validation<br/>Middleware]
+        end
+        
+        Controller1[BulkActionController<br/>.createBulkAction]
+        
+        subgraph "Services Layer"
+            BAS1[BulkActionService<br/>.createBulkAction]
+            FUS1[FileUploadService<br/>.processFileUpload]
+        end
+        
+        subgraph "Storage Operations"
+            MinIO1[(MinIO<br/>File Storage)]
+            DB1[(PostgreSQL<br/>bulk_actions table)]
+        end
+        
+        CQueue1[Chunking Queue<br/>BullMQ]
+        Response1[HTTP Response<br/>201 Created]
+        
+        %% Flow
+        Client1 --> LB1
+        LB1 --> API1
+        API1 --> Auth1
+        Auth1 --> Rate1
+        Rate1 --> Upload1
+        Upload1 --> MinIO1
+        MinIO1 --> Validate1
+        Validate1 --> ReqVal1
+        ReqVal1 --> Controller1
+        Controller1 --> FUS1
+        FUS1 --> BAS1
+        BAS1 --> DB1
+        Controller1 --> CQueue1
+        Controller1 --> Response1
+        Response1 --> Client1
+    end
+    
+    subgraph "2. GET /bulk-actions - List Bulk Actions Flow"
+        direction TB
+        
+        Client2[Client]
+        LB2[Load Balancer]
+        API2[API Server]
+        
+        subgraph "Middleware Chain 2"
+            Auth2[Authentication<br/>Middleware]
+            Rate2[Rate Limiting<br/>Middleware]
+            QueryVal2[Query Validation<br/>Middleware]
+        end
+        
+        Controller2[BulkActionController<br/>.getBulkActions]
+        BAS2[BulkActionService<br/>.getBulkActions]
+        Repo2[BulkActionRepository<br/>.findWithFilters]
+        DB2[(PostgreSQL<br/>Query with Pagination)]
+        Response2[HTTP Response<br/>200 OK + Paginated Data]
+        
+        %% Flow
+        Client2 --> LB2
+        LB2 --> API2
+        API2 --> Auth2
+        Auth2 --> Rate2
+        Rate2 --> QueryVal2
+        QueryVal2 --> Controller2
+        Controller2 --> BAS2
+        BAS2 --> Repo2
+        Repo2 --> DB2
+        DB2 --> Repo2
+        Repo2 --> BAS2
+        BAS2 --> Controller2
+        Controller2 --> Response2
+        Response2 --> Client2
+    end
+    
+    subgraph "3. GET /bulk-actions/{id} - Get Single Bulk Action Flow"
+        direction TB
+        
+        Client3[Client]
+        LB3[Load Balancer]
+        API3[API Server]
+        
+        subgraph "Middleware Chain 3"
+            Auth3[Authentication<br/>Middleware]
+            Rate3[Rate Limiting<br/>Middleware]
+            ParamVal3[Param Validation<br/>Middleware]
+        end
+        
+        Controller3[BulkActionController<br/>.getBulkActionById]
+        BAS3[BulkActionService<br/>.getBulkActionById]
+        Repo3[BulkActionRepository<br/>.findById]
+        DB3[(PostgreSQL<br/>Single Record Query)]
+        MinIO3[(MinIO<br/>Generate Download URL)]
+        Response3[HTTP Response<br/>200 OK + Action Details]
+        
+        %% Flow
+        Client3 --> LB3
+        LB3 --> API3
+        API3 --> Auth3
+        Auth3 --> Rate3
+        Rate3 --> ParamVal3
+        ParamVal3 --> Controller3
+        Controller3 --> BAS3
+        BAS3 --> Repo3
+        Repo3 --> DB3
+        DB3 --> Repo3
+        Repo3 --> BAS3
+        BAS3 --> MinIO3
+        MinIO3 --> BAS3
+        BAS3 --> Controller3
+        Controller3 --> Response3
+        Response3 --> Client3
+    end
+    
+    subgraph "4. GET /bulk-actions/{id}/stats - Statistics Flow"
+        direction TB
+        
+        Client4[Client]
+        LB4[Load Balancer]
+        API4[API Server]
+        
+        subgraph "Middleware Chain 4"
+            Auth4[Authentication<br/>Middleware]
+            Rate4[Rate Limiting<br/>Middleware]
+            ParamVal4[Param Validation<br/>Middleware]
+        end
+        
+        Controller4[BulkActionStatController<br/>.getBulkActionStats]
+        StatService4[BulkActionStatService<br/>.getDetailedStats]
+        StatRepo4[BulkActionStatRepository<br/>.getStatsSummary]
+        DB4[(PostgreSQL<br/>bulk_action_stats table)]
+        Response4[HTTP Response<br/>200 OK + Statistics]
+        
+        %% Flow
+        Client4 --> LB4
+        LB4 --> API4
+        API4 --> Auth4
+        Auth4 --> Rate4
+        Rate4 --> ParamVal4
+        ParamVal4 --> Controller4
+        Controller4 --> StatService4
+        StatService4 --> StatRepo4
+        StatRepo4 --> DB4
+        DB4 --> StatRepo4
+        StatRepo4 --> StatService4
+        StatService4 --> Controller4
+        Controller4 --> Response4
+        Response4 --> Client4
+    end
+    
+    subgraph "5. GET /health - Health Check Flow"
+        direction TB
+        
+        Client5[Client]
+        LB5[Load Balancer]
+        API5[API Server]
+        Controller5[HealthController<br/>.healthCheck]
+        
+        subgraph "Health Checks"
+            DBHealth[Database<br/>Health Check]
+            RedisHealth[Redis<br/>Health Check]
+            MinIOHealth[MinIO<br/>Health Check]
+        end
+        
+        Response5[HTTP Response<br/>200 OK + Health Status]
+        
+        %% Flow
+        Client5 --> LB5
+        LB5 --> API5
+        API5 --> Controller5
+        Controller5 --> DBHealth
+        Controller5 --> RedisHealth
+        Controller5 --> MinIOHealth
+        DBHealth --> Controller5
+        RedisHealth --> Controller5
+        MinIOHealth --> Controller5
+        Controller5 --> Response5
+        Response5 --> Client5
+    end
+    
+    %% Styling
+    classDef clientLayer fill:#e3f2fd
+    classDef middlewareLayer fill:#fff3e0
+    classDef controllerLayer fill:#e8f5e8
+    classDef serviceLayer fill:#f3e5f5
+    classDef storageLayer fill:#fce4ec
+    classDef responseLayer fill:#e0f2f1
+    
+    class Client1,Client2,Client3,Client4,Client5 clientLayer
+    class Auth1,Rate1,Upload1,Validate1,ReqVal1,Auth2,Rate2,QueryVal2,Auth3,Rate3,ParamVal3,Auth4,Rate4,ParamVal4 middlewareLayer
+    class Controller1,Controller2,Controller3,Controller4,Controller5 controllerLayer
+    class BAS1,FUS1,BAS2,BAS3,StatService4 serviceLayer
+    class MinIO1,DB1,DB2,DB3,MinIO3,DB4,DBHealth,RedisHealth,MinIOHealth storageLayer
+    class Response1,Response2,Response3,Response4,Response5 responseLayer

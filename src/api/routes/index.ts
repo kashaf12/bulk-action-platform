@@ -53,8 +53,6 @@ router.get('/docs', (req: Request, res: Response) => {
     message: 'API Documentation',
     data: {
       message: 'API documentation will be available here',
-      swaggerUrl: '/swagger.json', // Future implementation
-      postmanCollection: '/postman.json', // Future implementation
       endpoints: {
         bulkActions: {
           create: 'POST /bulk-actions',
